@@ -220,7 +220,7 @@ class WP_Agent_Updater_Core {
 
         $data = $this->gather_site_data();
 
-        $response = wp_remote_post($master_url . '/wp-json/marrison-master/v1/sync', [
+        $response = wp_remote_post($master_url . '/wp-json/wp-master-updater/v1/sync', [
             'body' => json_encode($data),
             'headers' => ['Content-Type' => 'application/json'],
             'timeout' => 30,

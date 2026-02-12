@@ -7,6 +7,12 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-02-12
+
+### Modificato
+- Corretto endpoint di push sync verso il Master (da `marrison-master` a `wp-master-updater`).
+- Aggiornata documentazione API nel README per riflettere gli endpoint corretti.
+
 ## [1.0.1] - 2026-02-12
 
 ### Corretto

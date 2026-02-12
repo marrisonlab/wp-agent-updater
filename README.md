@@ -55,11 +55,10 @@ La dashboard mostra:
 
 L'agent espone diversi endpoint API REST:
 
-- `/wp-json/wp-agent-updater/v1/info` - Informazioni sul client
-- `/wp-json/wp-agent-updater/v1/sync` - Sincronizzazione dati
+- `/wp-json/wp-agent-updater/v1/status` - Informazioni sul client e stato
 - `/wp-json/wp-agent-updater/v1/update` - Aggiornamento plugin/temi
-- `/wp-json/wp-agent-updater/v1/backup` - Gestione backup
-- `/wp-json/wp-agent-updater/v1/restore` - Ripristino backup
+- `/wp-json/wp-agent-updater/v1/backups` - Lista backup disponibili
+- `/wp-json/wp-agent-updater/v1/backups/restore` - Ripristino backup
 - `/wp-json/wp-agent-updater/v1/clear-repo-cache` - Pulizia cache repository
 
 ### Backup Automatici
