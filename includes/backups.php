@@ -120,7 +120,7 @@ class WP_Agent_Updater_Backups {
             
             // Try to determine if it's a plugin or theme by checking if it exists in wp-content/plugins or themes
             // This is a guess, but useful for display
-            $type = 'unknown';
+            $type = 'Unknown';
             if (file_exists(WP_PLUGIN_DIR . '/' . $slug)) $type = 'Plugin';
             elseif (file_exists(get_theme_root() . '/' . $slug)) $type = 'Theme';
             elseif (file_exists(WP_PLUGIN_DIR . '/' . $slug . '.php')) $type = 'Plugin'; // Single file plugin
@@ -170,7 +170,7 @@ class WP_Agent_Updater_Backups {
                 }
                 $zip->close();
             } else {
-                return new WP_Error('zip_error', 'Cannot open zip file');
+                return new WP_Error('zip_error', 'Impossibile aprire il file zip');
             }
         }
 
@@ -202,7 +202,7 @@ class WP_Agent_Updater_Backups {
         // This prevents "plugin does not exist" errors during unzip and ensures we have a valid backup before deleting live site data.
         $temp_dir = $this->backup_dir . 'temp_restore_' . uniqid() . '/';
         if (!$wp_filesystem->mkdir($temp_dir)) {
-             return new WP_Error('fs_error', 'Could not create temp directory');
+             return new WP_Error('fs_error', 'Unable to create temporary directory');
         }
         
         $result = unzip_file($zip_path, $temp_dir);

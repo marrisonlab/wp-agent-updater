@@ -90,12 +90,12 @@ class WP_Agent_Updater_API {
 
     public function handle_get_backups($request) {
         if (!$this->core->is_active()) {
-            return new WP_Error('disabled', 'Agent service is disabled', ['status' => 403]);
+            return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
         }
         
         // Ensure Backups class is loaded
         if (!class_exists('WP_Agent_Updater_Backups')) {
-            return new WP_Error('backups_unavailable', 'Backups module not loaded', ['status' => 500]);
+            return new WP_Error('backups_unavailable', 'Backup module not loaded', ['status' => 500]);
         }
 
         $backups = WP_Agent_Updater_Backups::get_instance()->get_backups();
@@ -104,7 +104,7 @@ class WP_Agent_Updater_API {
 
     public function handle_restore_backup($request) {
         if (!$this->core->is_active()) {
-            return new WP_Error('disabled', 'Agent service is disabled', ['status' => 403]);
+            return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
         }
 
         $filename = $request->get_param('filename');
@@ -113,7 +113,7 @@ class WP_Agent_Updater_API {
         }
 
         if (!class_exists('WP_Agent_Updater_Backups')) {
-             return new WP_Error('backups_unavailable', 'Backups module not loaded', ['status' => 500]);
+             return new WP_Error('backups_unavailable', 'Backup module not loaded', ['status' => 500]);
         }
 
         @set_time_limit(600);
@@ -145,7 +145,7 @@ class WP_Agent_Updater_API {
 
     public function handle_status_request($request) {
         if (!$this->core->is_active()) {
-            return new WP_Error('disabled', 'Agent service is disabled', ['status' => 403]);
+            return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
         }
         
         $data = $this->core->gather_site_data();
@@ -166,7 +166,7 @@ class WP_Agent_Updater_API {
         // Test 2: Status
         $results['status'] = $this->core->gather_site_data();
         
-        // Test 3: Check traduzioni disponibili
+        // Test 3: Check available translations
         if (!function_exists('wp_get_translation_updates')) {
             require_once ABSPATH . 'wp-admin/includes/update.php';
         }
@@ -178,7 +178,7 @@ class WP_Agent_Updater_API {
 
     public function handle_update_request($request) {
         if (!$this->core->is_active()) {
-            return new WP_Error('disabled', 'Agent service is disabled', ['status' => 403]);
+            return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
         }
 
         $clear_cache = $request->get_param('clear_cache');

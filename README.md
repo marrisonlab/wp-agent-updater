@@ -1,99 +1,99 @@
 # WP Agent Updater
 
-WP Agent Updater è il componente client del sistema di gestione remota di WordPress. Questo plugin si collega al Master Server per consentire il controllo remoto e gli aggiornamenti centralizzati.
+WP Agent Updater is the client component of the remote WordPress management system. This plugin connects to the Master Server to allow remote control and centralized updates.
 
-## Caratteristiche
+## Features
 
-- **Comunicazione Sicura**: Connessione sicura con il Master Server
-- **Aggiornamenti Automatici**: Ricevi e applica aggiornamenti da remoto
-- **Sistema di Backup**: Crea backup automatici prima degli aggiornamenti
-- **Gestione Repository**: Supporta repository pubblici e privati
-- **API REST**: Endpoint API per comunicazione con il master
-- **Cache Ottimizzata**: Sistema di cache per prestazioni ottimali
-- **Sicurezza Avanzata**: Autenticazione e autorizzazione robuste
+- **Secure Communication**: Secure connection with the Master Server
+- **Automatic Updates**: Receive and apply updates remotely
+- **Backup System**: Creates automatic backups before updates
+- **Repository Management**: Supports public and private repositories
+- **REST API**: API endpoints for communication with the master
+- **Optimized Cache**: Cache system for optimal performance
+- **Advanced Security**: Robust authentication and authorization
 
-## Installazione
+## Installation
 
-1. Scarica l'ultima versione dal [repository GitHub](https://github.com/marrisonlab/wp-agent-updater)
-2. Carica il plugin nella directory `/wp-content/plugins/` del tuo sito WordPress
-3. Attiva il plugin tramite il pannello di amministrazione WordPress
-4. Configura le impostazioni di connessione al master
+1. Download the latest version from the [GitHub repository](https://github.com/marrisonlab/wp-agent-updater)
+2. Upload the plugin to the `/wp-content/plugins/` directory of your WordPress site
+3. Activate the plugin via the WordPress admin panel
+4. Configure connection settings to the master
 
-## Requisiti
+## Requirements
 
-- WordPress 5.0 o superiore
-- PHP 7.0 o superiore
-- Connessione internet per comunicare con il master
-- Plugin Master installato sul server master
+- WordPress 5.0 or higher
+- PHP 7.0 or higher
+- Internet connection to communicate with the master
+- Master plugin installed on the master server
 
-## Configurazione
+## Configuration
 
-### Impostazioni di Base
+### Basic Settings
 
-1. Vai a "Impostazioni" → "WP Agent Updater"
-2. Inserisci l'URL del Master Server
-3. Configura le opzioni di backup e aggiornamento
-4. Salva le modifiche
+1. Go to "Settings" → "WP Agent Updater"
+2. Enter the Master Server URL
+3. Configure backup and update options
+4. Save changes
 
-### Sicurezza
+### Security
 
-- Utilizza sempre connessioni HTTPS
-- Configura chiavi di autenticazione forti
-- Limita l'accesso alle funzionalità di amministrazione
+- Always use HTTPS connections
+- Configure strong authentication keys
+- Limit access to administrative features
 
-## Utilizzo
+## Usage
 
-### Dashboard Agent
+### Agent Dashboard
 
-La dashboard mostra:
-- Stato di connessione con il master
-- Informazioni sul sito e sulla versione
-- Log delle ultime operazioni
-- Opzioni di configurazione
+The dashboard shows:
+- Connection status with the master
+- Site and version information
+- Log of latest operations
+- Configuration options
 
-### Endpoint API
+### API Endpoints
 
-L'agent espone diversi endpoint API REST:
+The agent exposes several REST API endpoints:
 
-- `/wp-json/wp-agent-updater/v1/status` - Informazioni sul client e stato
-- `/wp-json/wp-agent-updater/v1/update` - Aggiornamento plugin/temi
-- `/wp-json/wp-agent-updater/v1/backups` - Lista backup disponibili
-- `/wp-json/wp-agent-updater/v1/backups/restore` - Ripristino backup
-- `/wp-json/wp-agent-updater/v1/clear-repo-cache` - Pulizia cache repository
+- `/wp-json/wp-agent-updater/v1/status` - Client information and status
+- `/wp-json/wp-agent-updater/v1/update` - Plugin/theme update
+- `/wp-json/wp-agent-updater/v1/backups` - List available backups
+- `/wp-json/wp-agent-updater/v1/backups/restore` - Restore backup
+- `/wp-json/wp-agent-updater/v1/clear-repo-cache` - Clear repository cache
 
-### Backup Automatici
+### Automatic Backups
 
-L'agent crea automaticamente backup prima di:
-- Aggiornamenti di plugin
-- Aggiornamenti di temi
-- Aggiornamenti di WordPress
-- Operazioni di manutenzione
+The agent automatically creates backups before:
+- Plugin updates
+- Theme updates
+- WordPress updates
+- Maintenance operations
 
-## Sicurezza
+## Security
 
-- Autenticazione basata su nonce WordPress
-- Controllo degli accessi per ruoli utente
-- Validazione rigorosa dei dati in entrata
-- Sanitizzazione di tutti i dati di output
-- Log delle operazioni per audit
+- Authentication based on WordPress nonces
+- Access control for user roles
+- Strict validation of incoming data
+- Sanitization of all output data
+- Operation logs for audit
 
-## Supporto
+## Support
 
-Per supporto e documentazione aggiuntiva:
-- [Repository GitHub](https://github.com/marrisonlab/wp-agent-updater)
+For support and additional documentation:
+- [GitHub Repository](https://github.com/marrisonlab/wp-agent-updater)
 - [Issue Tracker](https://github.com/marrisonlab/wp-agent-updater/issues)
-- Visita [marrisonlab.com](https://marrisonlab.com)
+- Visit [marrisonlab.com](https://marrisonlab.com)
 
-## Sviluppo
+## Development
 
-Questo plugin è open source e contribuzioni sono benvenute!
+This plugin is open source and contributions are welcome!
 
-### Installazione per Sviluppo
+### Development Installation
 
-1. Clona il repository: `git clone https://github.com/marrisonlab/wp-agent-updater.git`
-2. Attiva il plugin nel tuo ambiente di sviluppo WordPress
-3. Contribuisci seguendo le linee guida standard di WordPress
+1. Clone the repository: `git clone https://github.com/marrisonlab/wp-agent-updater.git`
+2. Activate the plugin in your WordPress development environment
+3. Contribute following standard WordPress guidelines
 
-### Struttura del Codice
+### Code Structure
 
 - `includes/core.php` - Core functionality
