@@ -9,6 +9,15 @@ class WP_Agent_Updater_Admin {
         add_action('admin_menu', [$this, 'add_menu']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_wp_agent_updater_toggle_agent', [$this, 'toggle_agent_callback']);
+        
+        $plugin_basename = plugin_basename(WP_AGENT_UPDATER_PATH . 'wp-agent-updater.php');
+        add_filter('plugin_action_links_' . $plugin_basename, [$this, 'add_action_links']);
+    }
+
+    public function add_action_links($links) {
+        $settings_link = '<a href="admin.php?page=wp-agent-updater">Settings</a>';
+        array_unshift($links, $settings_link);
+        return $links;
     }
 
     public function toggle_agent_callback() {

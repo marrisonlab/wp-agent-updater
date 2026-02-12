@@ -7,6 +7,11 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-02-12
+
+### Corretto
+- Risolto problema di visibilità della pagina delle impostazioni.
+- Aggiunto link alle impostazioni nella lista dei plugin.
 
 ## [1.0.0] - 2024-02-12
 
