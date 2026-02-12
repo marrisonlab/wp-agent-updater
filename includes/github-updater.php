@@ -27,8 +27,12 @@ class WP_Agent_Updater_GitHub_Updater {
         $this->github_repo = $github_repo;
         $this->access_token = $access_token;
         $this->cache_key = 'wp_agent_updater_github_update_' . $this->plugin_slug;
-        
+
+        // Aggancia sia al pre_set che al site_transient per coprire tutti i casi:
+        // - quando WP salva un nuovo transient
+        // - quando il transient viene letto per mostrare la lista plugin
         add_filter('pre_set_site_transient_update_plugins', [$this, 'check_for_updates']);
+        add_filter('site_transient_update_plugins', [$this, 'check_for_updates']);
         add_filter('plugins_api', [$this, 'get_plugin_info'], 10, 3);
         add_action('admin_init', [$this, 'force_check']);
         add_filter('plugin_action_links_' . $this->plugin_slug, [$this, 'add_force_check_button'], 10, 2);
@@ -39,24 +43,31 @@ class WP_Agent_Updater_GitHub_Updater {
             return $transient;
         }
         
+        if (!function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
         $plugin_data = get_plugin_data($this->plugin_file);
-        $current_version = $plugin_data['Version'];
+        $current_version = isset($plugin_data['Version']) ? $plugin_data['Version'] : '';
         
         $remote_version = $this->get_remote_version();
-        
+
+        // Costruisci sempre l'oggetto plugin, anche se il remote fallisce,
+        // così WP mostra comunque la riga e il link "abilita aggiornamenti automatici".
+        $plugin = new stdClass();
+        $plugin->id = 'https://github.com/' . $this->github_user . '/' . $this->github_repo;
+        $plugin->slug = $this->slug;
+        $plugin->plugin = $this->plugin_slug;
+        $plugin->url = isset($plugin_data['PluginURI']) ? $plugin_data['PluginURI'] : ('https://github.com/' . $this->github_user . '/' . $this->github_repo);
+
         if ($remote_version) {
             // Normalize version by removing 'v' prefix if present
             $remote_ver_clean = ltrim($remote_version->tag_name, 'v');
-            
+            $plugin->new_version = $remote_ver_clean;
+            $plugin->package = $this->get_download_url($remote_version);
+
             $this->log("Checking updates: Current=$current_version, Remote=$remote_ver_clean");
 
-            $plugin = new stdClass();
-            $plugin->id = 'https://github.com/' . $this->github_user . '/' . $this->github_repo;
-            $plugin->slug = $this->slug;
-            $plugin->plugin = $this->plugin_slug;
-            $plugin->new_version = $remote_ver_clean;
-            $plugin->url = $plugin_data['PluginURI'];
-            $plugin->package = $this->get_download_url($remote_version);
             $plugin->icons = [
                 '1x' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/icon-128x128.png',
                 '2x' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/icon-256x256.png'
@@ -66,13 +77,19 @@ class WP_Agent_Updater_GitHub_Updater {
                 'high' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/banner-1544x500.png'
             ];
 
-            if (version_compare($current_version, $remote_ver_clean, '<')) {
+            if ($current_version && version_compare($current_version, $remote_ver_clean, '<')) {
                 $this->log("Update available!");
                 $transient->response[$this->plugin_slug] = $plugin;
             } else {
-                // Add to no_update to enable "Enable auto-updates" link
+                // Nessun aggiornamento, ma registra comunque in no_update
                 $transient->no_update[$this->plugin_slug] = $plugin;
             }
+        } else {
+            // Remote non raggiungibile: registra comunque in no_update
+            $this->log("GitHub release non raggiungibile, registro il plugin in no_update per abilitare gli auto-update.");
+            $plugin->new_version = $current_version ?: '1.0.0';
+            $plugin->package = '';
+            $transient->no_update[$this->plugin_slug] = $plugin;
         }
         
         return $transient;
