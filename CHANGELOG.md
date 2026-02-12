@@ -7,6 +7,20 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/spec/v2.0.
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-02-12
+
+### Corretto
+- Risolto errore fatale PHP causato da costante non definita durante l'inizializzazione del sistema di aggiornamento.
+- Ottimizzata l'inizializzazione del GitHub Updater nel file principale del plugin.
+
+## [1.0.7] - 2026-02-12
+
+### Corretto
+- Riscritto meccanismo di aggiornamento GitHub utilizzando file JSON remoto.
+- Aggiunta gestione della cache per le richieste di aggiornamento.
+- Implementato controllo forzato degli aggiornamenti con pulsante nella lista plugin.
+- Aggiunta correzione automatica della cartella plugin durante l'aggiornamento.
+
 ## [1.0.6] - 2026-02-12
 
 ### Manutenzione

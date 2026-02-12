@@ -5,37 +5,42 @@ class WP_Agent_Updater_GitHub_Updater {
     private $plugin_file;
     private $plugin_slug; // folder/filename.php
     private $slug; // folder name
-    private $github_repo;
     private $github_user;
-    private $access_token;
+    private $github_repo;
     private $cache_key;
     private $cache_duration = 3600; // 1 hour cache
+    private $update_url;
     
-    private function log($message) {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            $log_file = WP_CONTENT_DIR . '/wp-agent-updater-debug.log';
-            $timestamp = date('Y-m-d H:i:s');
-            error_log("[$timestamp] [WP Agent Updater GitHub] $message\n", 3, $log_file);
-        }
-    }
-
-    public function __construct($plugin_file, $github_user, $github_repo, $access_token = '') {
+    public function __construct($plugin_file, $github_user, $github_repo) {
         $this->plugin_file = $plugin_file;
         $this->plugin_slug = plugin_basename($plugin_file);
         $this->slug = dirname($this->plugin_slug);
         $this->github_user = $github_user;
         $this->github_repo = $github_repo;
-        $this->access_token = $access_token;
-        $this->cache_key = 'wp_agent_updater_github_update_' . $this->plugin_slug;
-
-        // Aggancia sia al pre_set che al site_transient per coprire tutti i casi:
-        // - quando WP salva un nuovo transient
-        // - quando il transient viene letto per mostrare la lista plugin
+        $this->cache_key = 'marrison_github_update_' . $this->slug;
+        $this->update_url = "https://raw.githubusercontent.com/{$github_user}/{$github_repo}/master/updates.json";
+        
         add_filter('pre_set_site_transient_update_plugins', [$this, 'check_for_updates']);
-        add_filter('site_transient_update_plugins', [$this, 'check_for_updates']);
-        add_filter('plugins_api', [$this, 'get_plugin_info'], 10, 3);
+        add_filter('plugins_api', [$this, 'plugin_info'], 20, 3);
         add_action('admin_init', [$this, 'force_check']);
         add_filter('plugin_action_links_' . $this->plugin_slug, [$this, 'add_force_check_button'], 10, 2);
+        add_action('admin_notices', [$this, 'display_check_result']);
+        add_filter('upgrader_source_selection', [$this, 'upgrader_source_selection'], 10, 4);
+    }
+    
+    public function display_check_result() {
+        if (isset($_GET['marrison-check-result'])) {
+            $status = sanitize_text_field($_GET['marrison-check-result']);
+            $message = get_transient('marrison_check_message_' . get_current_user_id());
+            
+            if ($status === 'success') {
+                echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($message) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-error is-dismissible"><p>' . esc_html($message) . '</p></div>';
+            }
+            
+            delete_transient('marrison_check_message_' . get_current_user_id());
+        }
     }
     
     public function check_for_updates($transient) {
@@ -43,214 +48,135 @@ class WP_Agent_Updater_GitHub_Updater {
             return $transient;
         }
         
-        if (!function_exists('get_plugin_data')) {
-            require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        }
-
-        $plugin_data = get_plugin_data($this->plugin_file);
-        $current_version = isset($plugin_data['Version']) ? $plugin_data['Version'] : '';
+        $remote_info = $this->get_remote_info();
         
-        $remote_version = $this->get_remote_version();
+        if ($remote_info) {
+            $current_version = isset($transient->checked[$this->plugin_file]) ? $transient->checked[$this->plugin_file] : '';
+            if (empty($current_version)) {
+                 $plugin_data = get_plugin_data($this->plugin_file);
+                 $current_version = $plugin_data['Version'];
+            }
 
-        // Costruisci sempre l'oggetto plugin, anche se il remote fallisce,
-        // così WP mostra comunque la riga e il link "abilita aggiornamenti automatici".
-        $plugin = new stdClass();
-        $plugin->id = 'https://github.com/' . $this->github_user . '/' . $this->github_repo;
-        $plugin->slug = $this->slug;
-        $plugin->plugin = $this->plugin_slug;
-        $plugin->url = isset($plugin_data['PluginURI']) ? $plugin_data['PluginURI'] : ('https://github.com/' . $this->github_user . '/' . $this->github_repo);
+            $plugin = new stdClass();
+            $plugin->slug = $this->slug;
+            $plugin->plugin = $this->plugin_slug;
+            $plugin->new_version = $remote_info->version;
+            $plugin->url = $remote_info->sections->description ?? '';
+            $plugin->package = $remote_info->download_url;
+            $plugin->icons = isset($remote_info->icons) ? (array)$remote_info->icons : [];
+            $plugin->banners = isset($remote_info->banners) ? (array)$remote_info->banners : [];
+            $plugin->banners_rtl = isset($remote_info->banners_rtl) ? (array)$remote_info->banners_rtl : [];
 
-        if ($remote_version) {
-            // Normalize version by removing 'v' prefix if present
-            $remote_ver_clean = ltrim($remote_version->tag_name, 'v');
-            $plugin->new_version = $remote_ver_clean;
-            $plugin->package = $this->get_download_url($remote_version);
-
-            $this->log("Checking updates: Current=$current_version, Remote=$remote_ver_clean");
-
-            $plugin->icons = [
-                '1x' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/icon-128x128.png',
-                '2x' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/icon-256x256.png'
-            ];
-            $plugin->banners = [
-                'low' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/banner-772x250.png',
-                'high' => 'https://raw.githubusercontent.com/' . $this->github_user . '/' . $this->github_repo . '/master/assets/banner-1544x500.png'
-            ];
-
-            if ($current_version && version_compare($current_version, $remote_ver_clean, '<')) {
-                $this->log("Update available!");
+            if (version_compare($current_version, $remote_info->version, '<')) {
                 $transient->response[$this->plugin_slug] = $plugin;
             } else {
-                // Nessun aggiornamento, ma registra comunque in no_update
                 $transient->no_update[$this->plugin_slug] = $plugin;
             }
-        } else {
-            // Remote non raggiungibile: registra comunque in no_update
-            $this->log("GitHub release non raggiungibile, registro il plugin in no_update per abilitare gli auto-update.");
-            $plugin->new_version = $current_version ?: '1.0.0';
-            $plugin->package = '';
-            $transient->no_update[$this->plugin_slug] = $plugin;
         }
         
         return $transient;
     }
     
-    public function get_plugin_info($false, $action, $args) {
-        // Check if this is the correct plugin
+    public function plugin_info($res, $action, $args) {
         if ($action !== 'plugin_information') {
-            return $false;
+            return $res;
         }
 
-        // WP sends 'slug' as the folder name, but sometimes it might be the full path depending on context
-        // We check both to be safe
-        if (!isset($args->slug) || ($args->slug !== $this->slug && $args->slug !== $this->plugin_slug)) {
-            return $false;
+        if (empty($args->slug) || ($args->slug !== $this->slug && $args->slug !== $this->plugin_slug)) {
+            return $res;
         }
         
         $remote_info = $this->get_remote_info();
         
-        if (!$remote_info) {
-            return $false;
+        if ($remote_info) {
+            $res = new stdClass();
+            $res->name = $remote_info->name;
+            $res->slug = $this->slug;
+            $res->version = $remote_info->version;
+            $res->tested = $remote_info->tested ?? '';
+            $res->requires = $remote_info->requires ?? '';
+            $res->author = $remote_info->author ?? '';
+            $res->download_link = $remote_info->download_url;
+            $res->trunk = $remote_info->download_url;
+            $res->last_updated = $remote_info->last_updated ?? '';
+            $res->sections = (array)($remote_info->sections ?? []);
+            $res->banners = isset($remote_info->banners) ? (array)$remote_info->banners : [];
+            
+            return $res;
         }
         
-        $plugin = new stdClass();
-        $plugin->name = $remote_info->name;
-        $plugin->slug = $this->slug;
-        $plugin->version = ltrim($remote_info->tag_name, 'v');
-        $plugin->author = $remote_info->author;
-        $plugin->homepage = $remote_info->homepage;
-        $plugin->download_link = $this->get_download_url($remote_info);
-        $plugin->sections = [
-            'description' => $remote_info->description ?? '',
-            'changelog' => $remote_info->body ?? '',
-        ];
-        
-        return $plugin;
+        return $res;
     }
     
-    private function get_remote_version() {
+    private function get_remote_info() {
         $cached = get_transient($this->cache_key);
         if ($cached !== false) {
             return $cached;
         }
         
-        $url = "https://api.github.com/repos/{$this->github_user}/{$this->github_repo}/releases/latest";
-        $response = $this->github_request($url);
+        $response = wp_remote_get($this->update_url, ['timeout' => 15, 'sslverify' => false]);
         
-        if ($response) {
-            set_transient($this->cache_key, $response, $this->cache_duration);
-            return $response;
-        }
-        
-        return null;
-    }
-    
-    private function get_remote_info() {
-        return $this->get_remote_version();
-    }
-    
-    private function get_download_url($release) {
-        if (isset($release->assets) && is_array($release->assets) && count($release->assets) > 0) {
-            foreach ($release->assets as $asset) {
-                if (strpos($asset->name, '.zip') !== false) {
-                    return $asset->browser_download_url;
-                }
-            }
-        }
-        
-        // Fallback to source code download
-        return "https://github.com/{$this->github_user}/{$this->github_repo}/archive/{$release->tag_name}.zip";
-    }
-    
-    private function github_request($url) {
-        $args = [
-            'timeout' => 15,
-            'headers' => [
-                'Accept' => 'application/vnd.github.v3+json',
-                'User-Agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
-            ],
-        ];
-        
-        if (!empty($this->access_token)) {
-            $args['headers']['Authorization'] = 'token ' . $this->access_token;
-        }
-        
-        $response = wp_remote_get($url, $args);
-        
-        if (is_wp_error($response)) {
-            return null;
-        }
-        
-        $response_code = wp_remote_retrieve_response_code($response);
-        if ($response_code !== 200) {
-            return null;
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            return false;
         }
         
         $body = wp_remote_retrieve_body($response);
-        return json_decode($body);
+        $data = json_decode($body);
+        
+        if (json_last_error() !== JSON_ERROR_NONE || empty($data)) {
+            return false;
+        }
+        
+        set_transient($this->cache_key, $data, $this->cache_duration);
+        
+        return $data;
     }
     
     public function force_check() {
-        if (isset($_GET['force-check']) && $_GET['force-check'] === '1' && 
-            isset($_GET['plugin']) && $_GET['plugin'] === $this->plugin_slug) {
+        if (isset($_GET['marrison-force-check']) && $_GET['marrison-force-check'] === $this->slug && current_user_can('update_plugins')) {
+            check_admin_referer('marrison_force_check_' . $this->slug);
             
-            check_admin_referer('wp-agent-updater-force-check-' . $this->plugin_slug);
-            
-            // Svuota la cache interna del releaser GitHub
             delete_transient($this->cache_key);
+            delete_site_transient('update_plugins');
             
-            // Svuota anche la cache globale degli aggiornamenti plugin
-            // in modo che WordPress sia costretto a ricontrollare subito.
-            if (function_exists('wp_clean_plugins_cache')) {
-                wp_clean_plugins_cache(true);
-            } else {
-                delete_site_transient('update_plugins');
-            }
-
-            // Forza immediatamente il controllo aggiornamenti
-            if (function_exists('wp_update_plugins')) {
-                wp_update_plugins();
-            } else {
-                // Carica le funzioni se non sono disponibili (fallback raro)
-                if (file_exists(ABSPATH . 'wp-admin/includes/update.php')) {
-                    require_once ABSPATH . 'wp-admin/includes/update.php';
-                    if (function_exists('wp_update_plugins')) {
-                        wp_update_plugins();
-                    }
-                }
-            }
+            // Force WP to check for updates
+            wp_update_plugins();
             
-            wp_redirect(admin_url('plugins.php?wp-agent-updater-check=1'));
+            $transient = get_site_transient('update_plugins');
+            $has_update = isset($transient->response[$this->plugin_slug]);
+            
+            $message = $has_update 
+                ? sprintf(__('Update found! Version %s is available.', 'wp-agent-updater'), $transient->response[$this->plugin_slug]->new_version)
+                : __('No updates found. You are running the latest version.', 'wp-agent-updater');
+            
+            set_transient('marrison_check_message_' . get_current_user_id(), $message, 60);
+            
+            wp_safe_redirect(add_query_arg('marrison-check-result', $has_update ? 'success' : 'error', remove_query_arg(['marrison-force-check', '_wpnonce'])));
             exit;
         }
     }
     
-    public function add_force_check_button($actions, $plugin_file) {
-        if ($plugin_file === $this->plugin_slug && current_user_can('update_plugins')) {
-            $url = wp_nonce_url(
-                admin_url('plugins.php?force-check=1&plugin=' . $this->plugin_slug),
-                'wp-agent-updater-force-check-' . $this->plugin_slug
-            );
-            
-            $actions['force-check'] = sprintf(
-                '<a href="%s" aria-label="%s">%s</a>',
-                $url,
-                esc_attr__('Forza controllo aggiornamenti da GitHub', 'wp-agent-updater'),
-                __('Forza Controllo', 'wp-agent-updater')
-            );
-        }
+    public function add_force_check_button($links) {
+        $url = add_query_arg([
+            'marrison-force-check' => $this->slug,
+            '_wpnonce' => wp_create_nonce('marrison_force_check_' . $this->slug)
+        ], self_admin_url('plugins.php'));
         
-        return $actions;
+        $links[] = '<a href="' . esc_url($url) . '">' . __('Check for Updates', 'wp-agent-updater') . '</a>';
+        return $links;
+    }
+
+    public function upgrader_source_selection($source, $remote_source, $upgrader, $hook_extra = null) {
+        global $wp_filesystem;
+
+        if (isset($hook_extra['plugin']) && $hook_extra['plugin'] === $this->plugin_slug) {
+            $corrected_source = trailingslashit($remote_source) . $this->slug . '/';
+            
+            if ($source !== $corrected_source) {
+                $wp_filesystem->move($source, $corrected_source);
+                return $corrected_source;
+            }
+        }
+        return $source;
     }
 }
-
-// Initialize GitHub updater for WP Agent Updater
-add_action('plugins_loaded', function() {
-    if (file_exists(plugin_dir_path(__FILE__) . '../wp-agent-updater.php')) {
-        new WP_Agent_Updater_GitHub_Updater(
-            plugin_dir_path(__FILE__) . '../wp-agent-updater.php',
-            'marrisonlab',
-            'wp-agent-updater'
-        );
-    }
-});

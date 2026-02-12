@@ -1,0 +1,13 @@
+{
+    "slug": "wp-agent-updater",
+    "version": "1.0.8",
+    "name": "WP Agent Updater",
+    "download_url": "https://github.com/marrisonlab/wp-agent-updater/archive/refs/heads/master.zip",
+    "sections": {
+        "description": "Client agent for WP Agent Updater System.",
+        "changelog": "See CHANGELOG.md in the repository."
+    },
+    "requires": "6.0",
+    "tested": "6.4",
+    "last_updated": "2026-02-12"
+}
