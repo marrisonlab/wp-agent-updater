@@ -179,8 +179,29 @@ class WP_Agent_Updater_GitHub_Updater {
             
             check_admin_referer('wp-agent-updater-force-check-' . $this->plugin_slug);
             
+            // Svuota la cache interna del releaser GitHub
             delete_transient($this->cache_key);
-            wp_clean_plugins_cache();
+            
+            // Svuota anche la cache globale degli aggiornamenti plugin
+            // in modo che WordPress sia costretto a ricontrollare subito.
+            if (function_exists('wp_clean_plugins_cache')) {
+                wp_clean_plugins_cache(true);
+            } else {
+                delete_site_transient('update_plugins');
+            }
+
+            // Forza immediatamente il controllo aggiornamenti
+            if (function_exists('wp_update_plugins')) {
+                wp_update_plugins();
+            } else {
+                // Carica le funzioni se non sono disponibili (fallback raro)
+                if (file_exists(ABSPATH . 'wp-admin/includes/update.php')) {
+                    require_once ABSPATH . 'wp-admin/includes/update.php';
+                    if (function_exists('wp_update_plugins')) {
+                        wp_update_plugins();
+                    }
+                }
+            }
             
             wp_redirect(admin_url('plugins.php?wp-agent-updater-check=1'));
             exit;
