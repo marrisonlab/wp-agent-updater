@@ -16,6 +16,55 @@ class WP_Agent_Updater_Admin {
         add_filter('plugin_action_links_' . $plugin_basename, [$this, 'add_action_links']);
     }
 
+    private function render_header($title) {
+        $logo_url = plugin_dir_url(__FILE__) . 'logo.svg';
+        ?>
+        <!-- Invisible H1 to catch WordPress notifications and prevent them from being injected into our custom header -->
+        <h1 class="wp-heading-inline" style="display:none;"></h1>
+        
+        <div class="mmu-header">
+            <div class="mmu-header-title">
+                <div class="mmu-title-text"><?php echo esc_html($title); ?></div>
+            </div>
+            <div class="mmu-header-logo">
+                <img src="<?php echo esc_url($logo_url); ?>" alt="Marrison Logo">
+            </div>
+        </div>
+        <style>
+            .mmu-header {
+                height: 120px;
+                background: linear-gradient(to top right, #3f2154, #11111e);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0 40px;
+                margin-bottom: 20px;
+                border-radius: 4px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                color: #fff;
+                box-sizing: border-box;
+            }
+            .mmu-header-title .mmu-title-text {
+                color: #fff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 28px !important;
+                font-weight: 600 !important;
+                line-height: 1.2 !important;
+            }
+            .mmu-header-logo {
+                display: flex;
+                align-items: center;
+            }
+            .mmu-header-logo img {
+                width: 180px;
+                height: auto;
+                display: block;
+            }
+        </style>
+        <?php
+    }
+
     public function add_action_links($links) {
         $settings_link = '<a href="admin.php?page=wp-agent-updater">Settings</a>';
         array_unshift($links, $settings_link);
@@ -139,7 +188,7 @@ class WP_Agent_Updater_Admin {
         $backups = $backups_instance->get_backups();
         ?>
         <div class="wrap">
-            <h1>Backup Management</h1>
+            <?php $this->render_header('Backup Management'); ?>
             <p>Here you can manage automatic backups created before updates.</p>
             
             <table class="wp-list-table widefat fixed striped">
@@ -215,19 +264,20 @@ class WP_Agent_Updater_Admin {
         <style>
             /* Layout complessivo */
             .wp-agent-updater-dashboard {
-                margin-top: 10px;
+                margin-top: 20px;
             }
             .wp-agent-updater-dashboard-intro {
                 max-width: 900px;
-                margin-bottom: 15px;
-                color: #555d66;
+                margin-bottom: 20px;
+                color: #646970;
+                font-size: 13px;
             }
             .wp-agent-updater-dashboard-grid {
                 display: grid;
-                grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr);
-                grid-gap: 20px;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 24px;
                 align-items: flex-start;
-                max-width: 1100px;
+                max-width: 100%;
             }
             @media (max-width: 960px) {
                 .wp-agent-updater-dashboard-grid {
@@ -235,40 +285,30 @@ class WP_Agent_Updater_Admin {
                 }
             }
 
-            /* Card generiche */
+            /* Card generiche - Stile Master Guide */
             .wp-agent-updater-card {
-                background: #fff;
-                border: 1px solid #dcdcde;
-                box-shadow: 0 1px 1px rgba(0, 0, 0, .04);
-                padding: 20px 24px;
+                background: #ffffff;
                 border-radius: 4px;
+                border: 1px solid #dcdcde;
+                padding: 20px 24px;
+                margin-bottom: 20px;
+                box-sizing: border-box;
             }
-            .wp-agent-updater-card + .wp-agent-updater-card {
-                margin-top: 20px;
-            }
-            .wp-agent-updater-card-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                margin-bottom: 16px;
-            }
-            .wp-agent-updater-card-title {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                margin: 0;
+            .wp-agent-updater-card h2 {
+                margin-top: 0;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #f0f0f1;
                 font-size: 16px;
-            }
-            .wp-agent-updater-card-title .dashicons {
-                font-size: 20px;
-                width: 20px;
-                height: 20px;
-                color: #2271b1;
+                font-weight: 600;
+                margin-bottom: 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
             }
             .wp-agent-updater-card-subtitle {
-                margin: 0 0 12px;
+                margin: 0 0 16px;
                 font-size: 13px;
-                color: #555d66;
+                color: #646970;
             }
 
             /* Badge stato servizio */
@@ -292,18 +332,20 @@ class WP_Agent_Updater_Admin {
                 border-color: #f5c6cb;
             }
 
-            /* Switch Styles */
+            /* Switch Styles - Master Style */
             .wp-agent-updater-switch {
                 position: relative;
                 display: inline-block;
-                width: 60px;
-                height: 34px;
-                margin-right: 8px;
+                width: 42px;
+                height: 22px;
+                margin-right: 10px;
+                vertical-align: middle;
             }
             .wp-agent-updater-switch input {
                 opacity: 0;
                 width: 0;
                 height: 0;
+                position: absolute;
             }
             .slider {
                 position: absolute;
@@ -312,23 +354,24 @@ class WP_Agent_Updater_Admin {
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background-color: #ccd0d4;
+                background-color: #dcdcde;
                 -webkit-transition: .2s;
                 transition: .2s;
-                border-radius: 34px;
+                border-radius: 999px;
+                box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
             }
             .slider:before {
                 position: absolute;
                 content: "";
-                height: 26px;
-                width: 26px;
-                left: 4px;
-                bottom: 4px;
-                background-color: #fff;
+                height: 16px;
+                width: 16px;
+                left: 3px;
+                bottom: 3px;
+                background-color: #ffffff;
                 -webkit-transition: .2s;
                 transition: .2s;
                 border-radius: 50%;
-                box-shadow: 0 1px 2px rgba(0,0,0,.2);
+                box-shadow: 0 1px 2px rgba(0,0,0,0.15);
             }
             input:checked + .slider {
                 background-color: #2271b1;
@@ -337,39 +380,41 @@ class WP_Agent_Updater_Admin {
                 box-shadow: 0 0 0 1px #2271b1;
             }
             input:checked + .slider:before {
-                -webkit-transform: translateX(26px);
-                -ms-transform: translateX(26px);
-                transform: translateX(26px);
+                -webkit-transform: translateX(18px);
+                -ms-transform: translateX(18px);
+                transform: translateX(18px);
             }
 
             /* Tabelle impostazioni */
             .wp-agent-updater-card .form-table th {
-                width: 180px;
+                width: auto;
+                padding-left: 0;
+                vertical-align: top;
+                min-width: 150px;
+            }
+            .wp-agent-updater-card .form-table td {
+                padding-left: 0;
+                padding-top: 10px;
             }
             .wp-agent-updater-inline-field {
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: 10px;
                 flex-wrap: wrap;
             }
         </style>
 
         <div class="wrap">
-            <h1 class="wp-heading-inline">WP Agent Updater</h1>
-            <p class="wp-agent-updater-dashboard-intro">
-                Manage service status, Master connection, and quick update actions from a single clear and compact dashboard.
-            </p>
-
-            <div class="wp-agent-updater-dashboard">
+            <?php $this->render_header('WP Agent Updater'); ?>
+                     <div class="wp-agent-updater-dashboard">
                 <div class="wp-agent-updater-dashboard-grid">
-                    <div class="wp-agent-updater-dashboard-main">
+                    
+                    <!-- Colonna 1: Master Configuration (e Status se attivo) -->
+                    <div>
                         <div class="wp-agent-updater-card">
-                            <div class="wp-agent-updater-card-header">
-                                <div class="wp-agent-updater-card-title">
-                                    <span class="dashicons dashicons-admin-site"></span>
-                                    <span>Master Configuration</span>
-                                </div>
-                            </div>
+                            <h2>
+                                <span>Master Configuration</span>
+                            </h2>
                             <p class="wp-agent-updater-card-subtitle">
                                 Set the Master site URL that will control this agent. The URL is securely stored.
                             </p>
@@ -402,15 +447,12 @@ class WP_Agent_Updater_Admin {
 
                         <?php if (get_option('wp_agent_updater_master_url')): ?>
                         <div class="wp-agent-updater-card">
-                            <div class="wp-agent-updater-card-header">
-                                <div class="wp-agent-updater-card-title">
-                                    <span class="dashicons dashicons-cloud"></span>
-                                    <span>Service Status</span>
-                                </div>
+                            <h2>
+                                <span>Service Status</span>
                                 <span id="service-status-text" class="wp-agent-updater-status-badge <?php echo get_option('wp_agent_updater_active') === 'yes' ? 'status-active' : 'status-inactive'; ?>">
                                     <?php echo get_option('wp_agent_updater_active') === 'yes' ? 'ACTIVE' : 'INACTIVE'; ?>
                                 </span>
-                            </div>
+                            </h2>
                             <p class="wp-agent-updater-card-subtitle">
                                 Enable WP Agent Updater to allow the Master to monitor the site and perform centralized updates.
                             </p>
@@ -435,34 +477,38 @@ class WP_Agent_Updater_Admin {
                         <?php endif; ?>
                     </div>
 
-                    <div class="wp-agent-updater-dashboard-side">
-                        <div class="wp-agent-updater-card">
-                            <div class="wp-agent-updater-card-header">
-                                <div class="wp-agent-updater-card-title">
-                                    <span class="dashicons dashicons-controls-repeat"></span>
-                                    <span>Quick Actions</span>
-                                </div>
-                            </div>
-                            <p class="wp-agent-updater-card-subtitle">
-                                Perform an immediate sync and quickly check the installed plugin version.
-                            </p>
+                    <!-- Colonna 2: Quick Actions -->
+                    <div class="wp-agent-updater-card">
+                        <h2>
+                            <span>Quick Actions</span>
+                        </h2>
+                        <p class="wp-agent-updater-card-subtitle">
+                            Perform an immediate sync.
+                        </p>
 
-                            <form method="post" style="margin-bottom: 16px;">
-                                <input type="hidden" name="force_sync" value="1">
-                                <?php submit_button('Force Sync', 'secondary'); ?>
-                            </form>
-
-                            <hr style="margin: 16px 0; border: 0; border-top: 1px solid #eee;">
-
-                            <h3 style="margin-top: 0;">Plugin Updates</h3>
-                            <p>Installed Version: <strong><?php echo get_plugin_data(WP_AGENT_UPDATER_PATH . 'wp-agent-updater.php')['Version']; ?></strong></p>
-                            <p style="margin-bottom: 0;">
-                                <a href="<?php echo wp_nonce_url(admin_url('plugins.php?force-check=1&plugin=' . $plugin_basename), 'wp-agent-updater-force-check-' . $plugin_basename); ?>" class="button button-primary">
-                                    Check for updates on GitHub
-                                </a>
-                            </p>
-                        </div>
+                        <form method="post">
+                            <input type="hidden" name="force_sync" value="1">
+                            <?php submit_button('Force Sync', 'secondary'); ?>
+                        </form>
                     </div>
+
+                    <!-- Colonna 3: Plugin Updates -->
+                    <div class="wp-agent-updater-card">
+                        <h2>
+                            <span>Plugin Updates</span>
+                        </h2>
+                        <p class="wp-agent-updater-card-subtitle">
+                            Check for plugin updates.
+                        </p>
+                        
+                        <p>Installed Version: <strong><?php echo get_plugin_data(WP_AGENT_UPDATER_PATH . 'wp-agent-updater.php')['Version']; ?></strong></p>
+                        <p>
+                            <a href="<?php echo wp_nonce_url(admin_url('plugins.php?force-check=1&plugin=' . $plugin_basename), 'wp-agent-updater-force-check-' . $plugin_basename); ?>" class="button button-primary">
+                                Check for updates on GitHub
+                            </a>
+                        </p>
+                    </div>
+
                 </div>
             </div>
         </div>

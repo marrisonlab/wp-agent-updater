@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-02-13
+
+### Changed
+- Updated Settings page layout to match Master plugin style (3 columns, card styling).
+- Fixed styling issues (switches, alignment).
+- Added standardized header to admin pages.
+
 ## [1.0.11] - 2026-02-13
 
 ### Changed
