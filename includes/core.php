@@ -252,7 +252,10 @@ class WP_Agent_Updater_Core {
         }
 
         // Force clear cache and check updates
-        $this->clear_cache();
+        // Use soft clear to avoid deleting transients and forcing slow external requests
+        $this->clear_cache(false);
+        // wp_update_plugins(); // REMOVED: Forces external requests
+        // wp_update_themes();  // REMOVED: Forces external requests
         
         // Ensure checked list is populated by calling wp_update_plugins if needed
         // (wp_update_plugins is called in clear_cache, but we want to be sure)
@@ -263,7 +266,8 @@ class WP_Agent_Updater_Core {
         // Refresh transient to ensure our filter runs with populated checked data
         $plugin_updates = get_site_transient('update_plugins');
         if (empty($plugin_updates->checked)) {
-            $this->log("Transient 'checked' empty after clear_cache. Forcing wp_update_plugins again.");
+            // ONLY if data is missing, we force a check.
+            $this->log("Transient 'checked' empty. Forcing wp_update_plugins.");
             wp_update_plugins();
             $plugin_updates = get_site_transient('update_plugins');
         }
@@ -317,11 +321,18 @@ class WP_Agent_Updater_Core {
         }
 
         // Translations (simplified check)
-        if (!function_exists('wp_get_translation_updates')) {
-            require_once ABSPATH . 'wp-admin/includes/update.php';
+        // Check transient first to avoid external calls
+        $trans_updates = get_site_transient('update_core');
+        $translations_need_update = !empty($trans_updates->translations);
+
+        if (!$translations_need_update) {
+             // Fallback to standard check only if transient is empty/invalid but likely won't trigger external call if cache is valid
+             if (!function_exists('wp_get_translation_updates')) {
+                require_once ABSPATH . 'wp-admin/includes/update.php';
+            }
+            $trans_updates_list = wp_get_translation_updates();
+            $translations_need_update = !empty($trans_updates_list);
         }
-        $trans_updates = wp_get_translation_updates();
-        $translations_need_update = !empty($trans_updates);
 
         // Backups
         $backups = [];
@@ -766,12 +777,14 @@ class WP_Agent_Updater_Core {
         if ($clear_cache) {
             $this->log("Force clearing cache requested - clearing all transients...");
             $this->force_reload_private_repos();
-            $this->log("Waiting 2 seconds for WordPress to detect updates...");
-            sleep(2);
             $this->log("Cache clear complete. Re-checking for updates...");
-            // Force WordPress to check again
-            wp_update_plugins();
-            wp_update_themes();
+        }
+
+        // Always check for updates (WordPress handles throttling via last_checked)
+        wp_update_plugins();
+        wp_update_themes();
+
+        if ($clear_cache) {
             $plugins_tr = get_site_transient('update_plugins');
             $this->log("After cache clear, update_plugins transient has " . count((array)($plugins_tr->response ?? [])) . " updates");
         }
@@ -822,7 +835,7 @@ class WP_Agent_Updater_Core {
         include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
         
         $upgrader = new Plugin_Upgrader(new Automatic_Upgrader_Skin());
-        wp_update_plugins();
+        // wp_update_plugins(); // Removed to avoid redundant external requests
         $updates = get_site_transient('update_plugins');
         if (empty($updates->response)) return;
 
@@ -859,7 +872,7 @@ class WP_Agent_Updater_Core {
     private function update_themes($source) {
         include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
         $upgrader = new Theme_Upgrader(new Automatic_Upgrader_Skin());
-        wp_update_themes();
+        // wp_update_themes(); // Removed to avoid redundant external requests
         $updates = get_site_transient('update_themes');
         if (empty($updates->response)) return;
 
@@ -909,15 +922,6 @@ class WP_Agent_Updater_Core {
         $this->log('Clearing translation cache and checking for updates...');
         wp_clean_update_cache();
         
-        // Force check for translations
-        delete_site_transient('update_plugins');
-        delete_site_transient('update_themes');
-        delete_site_transient('update_core');
-        
-        // Trigger update checks
-        wp_update_plugins();
-        wp_update_themes();
-
         // 2. Get the actual list of translation updates
         $this->log('Fetching available translation updates...');
         $updates = wp_get_translation_updates();

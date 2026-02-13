@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-02-13
+### Changed
+- Optimized sync performance: implemented soft cache clearing.
+- Removed artificial sleep delays in update routines.
+- Reduced external API calls during update checks.
+
 ## [1.0.12] - 2026-02-13
 
 ### Changed
