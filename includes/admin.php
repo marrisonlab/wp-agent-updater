@@ -60,7 +60,7 @@ class WP_Agent_Updater_Admin {
 
     public function add_menu() {
         add_menu_page(
-            'WP Agent Updater',
+            'WP Agent',
             'WP Agent',
             'manage_options',
             'wp-agent-updater',
