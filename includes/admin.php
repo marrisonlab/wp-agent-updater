@@ -88,7 +88,7 @@ class WP_Agent_Updater_Admin {
     }
 
     public function fix_menu_icon() {
-        $icon_url = plugin_dir_url(__FILE__) . 'icon.svg';
+        $icon_url = plugin_dir_url(__FILE__) . 'icon.svg?v=1.0.11';
         ?>
         <style>
             #adminmenu .toplevel_page_wp-agent-updater .wp-menu-image img {
