@@ -28,6 +28,7 @@ class WP_Agent_Updater_Admin {
             </div>
             <div class="mmu-header-logo">
                 <img src="<?php echo esc_url($logo_url); ?>" alt="Marrison Logo">
+                <a href="https://marrisonlab.com" target="_blank" class="marrison-link">Powered by Marrisonlab</a>
             </div>
         </div>
         <style>
@@ -54,12 +55,27 @@ class WP_Agent_Updater_Admin {
             }
             .mmu-header-logo {
                 display: flex;
-                align-items: center;
+                flex-direction: column;
+                align-items: flex-start;
+                justify-content: center;
             }
             .mmu-header-logo img {
                 width: 180px;
                 height: auto;
                 display: block;
+                margin-bottom: 2px;
+            }
+            .marrison-link {
+                color: #fd5ec0 !important;
+                font-size: 11px !important;
+                text-decoration: none !important;
+                font-weight: 400 !important;
+                font-style: italic !important;
+                transition: color 0.2s ease;
+            }
+            .marrison-link:hover {
+                color: #fff !important;
+                text-decoration: underline !important;
             }
         </style>
         <?php
