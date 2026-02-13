@@ -65,7 +65,7 @@ class WP_Agent_Updater_Admin {
             'manage_options',
             'wp-agent-updater',
             [$this, 'render_page'],
-            plugin_dir_url(__FILE__) . 'icon.svg'
+            plugin_dir_url(__FILE__) . 'menu-icon.svg?v=' . time()
         );
         
         add_submenu_page(
@@ -88,11 +88,11 @@ class WP_Agent_Updater_Admin {
     }
 
     public function fix_menu_icon() {
-        $icon_url = plugin_dir_url(__FILE__) . 'icon.svg?v=1.0.11';
+        $icon_url = plugin_dir_url(__FILE__) . 'menu-icon.svg?v=' . time();
         ?>
         <style>
             #adminmenu .toplevel_page_wp-agent-updater .wp-menu-image img {
-                display: none;
+                display: none !important;
             }
             #adminmenu .toplevel_page_wp-agent-updater .wp-menu-image {
                 background-color: #a7aaad;
