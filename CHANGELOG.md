@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-02-14
+### Fixed
+- Prevented silent update failures on some servers by forcing `FS_METHOD=direct`
+  and initializing `WP_Filesystem` in the full update routine.
+- Improved reliability of plugin/theme updates triggered via REST.
+
 ## [1.0.13] - 2026-02-13
 ### Changed
 - Optimized sync performance: implemented soft cache clearing.
