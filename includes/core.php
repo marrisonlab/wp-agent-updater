@@ -41,7 +41,11 @@ class WP_Agent_Updater_Core {
         $themes_repo = get_option('wp_agent_updater_themes_repo');
         
         if (($plugins_repo && strpos($url, $plugins_repo) !== false) || 
-            ($themes_repo && strpos($url, $themes_repo) !== false)) {
+            ($themes_repo && strpos($url, $themes_repo) !== false) ||
+            stripos($url, 'github.com') !== false ||
+            stripos($url, 'raw.githubusercontent.com') !== false ||
+            stripos($url, 'downloads.wordpress.org') !== false ||
+            stripos($url, 'api.wordpress.org') !== false) {
             $args['sslverify'] = false;
             $args['timeout'] = 300; // Increase timeout for downloads
         }
@@ -243,6 +247,23 @@ class WP_Agent_Updater_Core {
             }
         }
 
+        // Save injected updates from master
+        if (isset($body['injected_updates'])) {
+            $this->log("Saving injected updates from master");
+            
+            // Save injected plugin updates
+            if (isset($body['injected_updates']['plugins'])) {
+                update_option('wp_agent_updater_master_injected_plugins', $body['injected_updates']['plugins']);
+                $this->log("Saved " . count($body['injected_updates']['plugins']) . " injected plugin updates");
+            }
+            
+            // Save injected theme updates
+            if (isset($body['injected_updates']['themes'])) {
+                update_option('wp_agent_updater_master_injected_themes', $body['injected_updates']['themes']);
+                $this->log("Saved " . count($body['injected_updates']['themes']) . " injected theme updates");
+            }
+        }
+
         return $body;
     }
 
@@ -272,35 +293,63 @@ class WP_Agent_Updater_Core {
             $plugin_updates = get_site_transient('update_plugins');
         }
         
+        // Check for available updates
+        $updates = get_site_transient('update_plugins');
+        
+        // Check for master-injected plugin updates
+        $master_injected_updates = get_option('wp_agent_updater_master_injected_plugins', []);
+        
         $plugins_active = [];
         $plugins_inactive = [];
         $plugins_need_update = [];
 
-        foreach ($all_plugins as $path => $plugin) {
-            $info = [
-                'name' => $plugin['Name'],
-                'path' => $path,
-                'version' => $plugin['Version']
-            ];
-
-            if (in_array($path, $active_plugins)) {
+        foreach ($all_plugins as $file => $plugin) {
+            if (is_plugin_active($file)) {
+                $info = [
+                    'name' => $plugin['Name'],
+                    'path' => $file,
+                    'version' => $plugin['Version']
+                ];
                 $plugins_active[] = $info;
-            } else {
-                $plugins_inactive[] = $info;
-            }
 
-            if (isset($plugin_updates->response[$path])) {
-                $new_version = $plugin_updates->response[$path]->new_version;
-                $this->log("Sync Data: $path needs update. New version reported: $new_version");
+                $update_found = false;
+                $can_update = false;
                 
-                $plugins_need_update[] = array_merge($info, [
-                    'new_version' => $new_version
-                ]);
+                // Check WordPress transient updates first
+                if (isset($updates->response[$file])) {
+                    $update_found = true;
+                    $can_update = true;
+                }
+                
+                // Check master-injected updates
+                if (!$update_found && isset($master_injected_updates[$file])) {
+                    $injected = $master_injected_updates[$file];
+                    $update_found = true;
+                    $can_update = !empty($injected['package']);
+                    $this->log("Using master-injected plugin update for $file: " . $info['version'] . " -> " . $injected['new_version']);
+                }
+                
+                if ($update_found) {
+                    $new_version = $injected['new_version'] ?? ($updates->response[$file]->new_version ?? '');
+                    $plugins_need_update[] = array_merge($info, [
+                        'new_version' => $new_version,
+                        'can_update' => $can_update
+                    ]);
+                }
+            } else {
+                $plugins_inactive[] = [
+                    'name' => $plugin['Name'],
+                    'path' => $file,
+                    'version' => $plugin['Version']
+                ];
             }
         }
 
         $all_themes = wp_get_themes();
         $theme_updates = get_site_transient('update_themes');
+        
+        // Check for master-injected theme updates
+        $master_injected_updates = get_option('wp_agent_updater_master_injected_themes', []);
         
         $themes_installed = [];
         $themes_need_update = [];
@@ -313,10 +362,24 @@ class WP_Agent_Updater_Core {
             ];
             $themes_installed[] = $info;
 
+            $update_found = false;
+            
+            // Check WordPress transient updates first
             if (isset($theme_updates->response[$slug])) {
                 $themes_need_update[] = array_merge($info, [
                     'new_version' => $theme_updates->response[$slug]['new_version']
                 ]);
+                $update_found = true;
+            }
+            
+            // Check master-injected updates
+            if (!$update_found && isset($master_injected_updates[$slug])) {
+                $injected = $master_injected_updates[$slug];
+                $themes_need_update[] = array_merge($info, [
+                    'new_version' => $injected['new_version'],
+                    'package' => $injected['package'] ?? ''
+                ]);
+                $this->log("Using master-injected theme update for $slug: " . $info['version'] . " -> " . $injected['new_version']);
             }
         }
 
@@ -760,65 +823,132 @@ class WP_Agent_Updater_Core {
 
     public function perform_full_update_routine($clear_cache = true, $update_translations = true) {
 
-
-        // Ensure necessary files are loaded for upgrader
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        require_once ABSPATH . 'wp-admin/includes/misc.php';
-        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/class-plugin-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/class-theme-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/class-language-pack-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        require_once ABSPATH . 'wp-admin/includes/theme.php';
-
-        $this->disable_gravityforms_autoupdate();
-
-        // 1. Pulisci cache se richiesto
-        if ($clear_cache) {
-            $this->log("Force clearing cache requested - clearing all transients...");
-            $this->force_reload_private_repos();
-            $this->log("Cache clear complete. Re-checking for updates...");
-        }
-
-        // Always check for updates (WordPress handles throttling via last_checked)
-        wp_update_plugins();
-        wp_update_themes();
-
-        if ($clear_cache) {
-            $plugins_tr = get_site_transient('update_plugins');
-            $this->log("After cache clear, update_plugins transient has " . count((array)($plugins_tr->response ?? [])) . " updates");
-        }
-
-        // 1. Update WP Repo Plugins
-        $this->update_plugins('wp'); 
-        $this->clear_cache(false); // Soft clear
-        
-        // 3. Update Private Repo Plugins
-        $this->update_plugins('private');
-        $this->clear_cache(false); // Soft clear
-        
-        // 5. Update WP Repo Themes
-        $this->update_themes('wp');
-        $this->clear_cache(false); // Soft clear
-        
-        // 7. Update Private Repo Themes
-        $this->update_themes('private');
-        $this->clear_cache(false); // Soft clear
-        
-        // 9. Update Translations - ALWAYS unless explicitly disabled
-        if ($update_translations) {
-            $this->log("Updating translations...");
-            $this->update_translations();
-        } else {
-            $this->log("Translation updates skipped (explicitly disabled).");
+        // Validate service is active and configured
+        if (!$this->is_active()) {
+            $this->log("Update routine aborted: Agent service is not active");
+            return new WP_Error('service_inactive', 'Agent service is not active');
         }
         
-        // Final Full Refresh before Sync
-        $this->clear_cache(true);
+        $master_url = $this->get_master_url();
+        if (empty($master_url)) {
+            $this->log("Update routine aborted: Master URL not configured");
+            return new WP_Error('master_not_configured', 'Master URL not configured');
+        }
         
-        // 11. Send data to master
-        $this->log("Update routine completed. Syncing with master...");
-        return $this->sync_with_master();
+        $this->log("Starting update routine - Agent active: YES, Master: $master_url");
+
+        try {
+            // Ensure necessary files are loaded for upgrader
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/misc.php';
+            require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+            require_once ABSPATH . 'wp-admin/includes/class-plugin-upgrader.php';
+            require_once ABSPATH . 'wp-admin/includes/class-theme-upgrader.php';
+            require_once ABSPATH . 'wp-admin/includes/class-language-pack-upgrader.php';
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            require_once ABSPATH . 'wp-admin/includes/theme.php';
+
+            $this->disable_gravityforms_autoupdate();
+
+            // 1. Pulisci cache se richiesto
+            if ($clear_cache) {
+                $this->log("Force clearing cache requested - clearing all transients...");
+                $this->force_reload_private_repos();
+                $this->log("Cache clear complete. Re-checking for updates...");
+            }
+
+            // Always check for updates (WordPress handles throttling via last_checked)
+            wp_update_plugins();
+            wp_update_themes();
+
+            if ($clear_cache) {
+                $plugins_tr = get_site_transient('update_plugins');
+                $this->log("After cache clear, update_plugins transient has " . count((array)($plugins_tr->response ?? [])) . " updates");
+            }
+
+            $agent_file = 'wp-agent-updater/wp-agent-updater.php';
+            $updates = get_site_transient('update_plugins');
+            if (!empty($updates->response[$agent_file])) {
+                $pkg = isset($updates->response[$agent_file]->package) ? $updates->response[$agent_file]->package : '';
+                if ($pkg) {
+                    $this->log("Updating Agent via package: $pkg");
+                    $this->manual_upgrade_plugin($agent_file, $pkg);
+                }
+            }
+
+            // 1. Update WP Repo Plugins
+            $this->log("Starting WP repository plugins update...");
+            $this->update_plugins('wp'); 
+            $this->clear_cache(false); // Soft clear
+            
+            // 3. Update Private Repo Plugins
+            $this->log("Starting private repository plugins update...");
+            $this->update_plugins('private');
+            $this->clear_cache(false); // Soft clear
+            
+            // 3b. Ensure any remaining pending plugin updates are applied (catch-all)
+            if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            $pending = get_site_transient('update_plugins');
+            if (!empty($pending->response) && is_array($pending->response)) {
+                $this->log("Final pass: applying remaining plugin updates (catch-all)");
+                $updated_final = 0;
+                foreach ($pending->response as $file => $data) {
+                    $pkg = isset($data->package) ? $data->package : '';
+                    if (!$pkg) {
+                        continue;
+                    }
+                    $this->log("Final pass update via package for $file: $pkg");
+                    $manual = $this->manual_upgrade_plugin($file, $pkg);
+                    if ($manual && !is_wp_error($manual)) {
+                        $updated_final++;
+                    } else {
+                        if (is_wp_error($manual)) {
+                            $this->log("Final pass error for $file: " . $manual->get_error_message());
+                        } else {
+                            $this->log("Final pass unknown failure for $file");
+                        }
+                    }
+                }
+                if ($updated_final > 0) {
+                    $stats = get_transient('wp_agent_updater_last_updated_plugins') ?: ['count' => 0];
+                    $stats['count'] += $updated_final;
+                    set_transient('wp_agent_updater_last_updated_plugins', $stats, 600);
+                }
+                $this->clear_cache(false); // Soft clear
+            }
+            
+            // 5. Update WP Repo Themes
+            $this->log("Starting WP repository themes update...");
+            $this->update_themes('wp');
+            $this->clear_cache(false); // Soft clear
+            
+            // 7. Update Private Repo Themes
+            $this->log("Starting private repository themes update...");
+            $this->update_themes('private');
+            $this->clear_cache(false); // Soft clear
+            
+            // 9. Update Translations - ALWAYS unless explicitly disabled
+            if ($update_translations) {
+                $this->log("Updating translations...");
+                $this->update_translations();
+            } else {
+                $this->log("Translation updates skipped (explicitly disabled).");
+            }
+            
+            // Final Full Refresh before Sync
+            $this->clear_cache(true);
+            
+            // 11. Send data to master
+            $this->log("Update routine completed successfully. Syncing with master...");
+            return $this->sync_with_master();
+            
+        } catch (Exception $e) {
+            $this->log("CRITICAL ERROR in update routine: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+            return new WP_Error('update_routine_exception', $e->getMessage());
+        } catch (Error $e) {
+            $this->log("FATAL ERROR in update routine: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+            return new WP_Error('update_routine_error', $e->getMessage());
+        }
     }
 
     private function disable_gravityforms_autoupdate() {
@@ -834,17 +964,41 @@ class WP_Agent_Updater_Core {
         if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
         include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
         
-        $upgrader = new Plugin_Upgrader(new Automatic_Upgrader_Skin());
         // wp_update_plugins(); // Removed to avoid redundant external requests
         $updates = get_site_transient('update_plugins');
-        if (empty($updates->response)) return;
+        
+        // Get master-injected updates
+        $master_injected_updates = get_option('wp_agent_updater_master_injected_plugins', []);
+        
+        // Combine WordPress updates with master-injected updates
+        $all_updates = [];
+        
+        // Add WordPress transient updates
+        if (!empty($updates->response)) {
+            $all_updates = array_merge($all_updates, (array)$updates->response);
+        }
+        
+        // Add master-injected updates
+        if (!empty($master_injected_updates)) {
+            foreach ($master_injected_updates as $file => $injected) {
+                // Convert injected update to expected format
+                $update_obj = new stdClass();
+                $update_obj->package = $injected['package'] ?? '';
+                $update_obj->new_version = $injected['new_version'] ?? '';
+                $update_obj->slug = $injected['slug'] ?? '';
+                $all_updates[$file] = $update_obj;
+                $this->log("Added master-injected update for $file: " . $injected['new_version']);
+            }
+        }
+        
+        if (empty($all_updates)) return;
 
         $private_slugs = $this->get_private_slugs('plugins');
         $this->log("Private Slugs found: " . implode(', ', $private_slugs));
         
         $plugins_to_update = [];
 
-        foreach ($updates->response as $file => $data) {
+        foreach ($all_updates as $file => $data) {
             $slug = dirname($file);
             if ($slug === '.') $slug = basename($file, '.php');
             
@@ -857,42 +1011,90 @@ class WP_Agent_Updater_Core {
             $this->log("Checking plugin: $file | Slug: $slug | Is Private: " . ($is_private ? 'YES' : 'NO') . " | Package: $package_url");
             
             if ($source === 'wp' && !$is_private) {
-                $plugins_to_update[] = $file;
+                $plugins_to_update[$file] = $data;
             } elseif ($source === 'private' && $is_private) {
-                $plugins_to_update[] = $file;
+                $plugins_to_update[$file] = $data;
             }
         }
 
         if (!empty($plugins_to_update)) {
-            $this->log("Updating plugins ($source): " . implode(', ', $plugins_to_update));
-            $result = $upgrader->bulk_upgrade($plugins_to_update);
+            $this->log("Updating plugins ($source): " . implode(', ', array_keys($plugins_to_update)));
             $updated = 0;
-            if (is_array($result)) {
-                foreach ($result as $res) {
-                    if ($res && !is_wp_error($res)) $updated++;
+            $skipped_no_package = [];
+            $failed = [];
+            foreach ($plugins_to_update as $file => $data) {
+                $pkg = isset($data->package) ? $data->package : '';
+                if (!$pkg) {
+                    $this->log("Skipping $file (missing package url)");
+                    $skipped_no_package[] = $file;
+                    continue;
+                }
+                $this->log("Updating $file via package: $pkg");
+                $res = $this->manual_upgrade_plugin($file, $pkg);
+                if ($res && !is_wp_error($res)) {
+                    $updated++;
+                } else {
+                    $failed[] = [
+                        'file' => $file,
+                        'error' => is_wp_error($res) ? $res->get_error_message() : 'unknown'
+                    ];
                 }
             }
-            if (!$updated) {
-                foreach ($plugins_to_update as $file) {
-                    $single = $upgrader->upgrade($file);
-                    if ($single && !is_wp_error($single)) $updated++;
-                }
-            }
-            set_transient('wp_agent_updater_last_updated_plugins', ['count' => $updated], 600);
+            $existing_stats = get_transient('wp_agent_updater_last_updated_plugins');
+            $existing_count = is_array($existing_stats) ? (int)($existing_stats['count'] ?? 0) : 0;
+            set_transient('wp_agent_updater_last_updated_plugins', ['count' => $existing_count + $updated], 600);
+            $existing_report = get_transient('wp_agent_updater_last_update_report');
+            $existing_plugins = is_array($existing_report) && isset($existing_report['plugins']) && is_array($existing_report['plugins'])
+                ? $existing_report['plugins']
+                : [];
+            $merged_report = [
+                'plugins' => [
+                    'updated' => (int)($existing_plugins['updated'] ?? 0) + $updated,
+                    'skipped_no_package' => array_merge((array)($existing_plugins['skipped_no_package'] ?? []), $skipped_no_package),
+                    'failed' => array_merge((array)($existing_plugins['failed'] ?? []), $failed),
+                ]
+            ];
+            set_transient('wp_agent_updater_last_update_report', $merged_report, 600);
         }
     }
 
     private function update_themes($source) {
         include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
         $upgrader = new Theme_Upgrader(new Automatic_Upgrader_Skin());
+        
         // wp_update_themes(); // Removed to avoid redundant external requests
         $updates = get_site_transient('update_themes');
-        if (empty($updates->response)) return;
+        
+        // Get master-injected updates
+        $master_injected_updates = get_option('wp_agent_updater_master_injected_themes', []);
+        
+        // Combine WordPress updates with master-injected updates
+        $all_updates = [];
+        
+        // Add WordPress transient updates
+        if (!empty($updates->response)) {
+            $all_updates = array_merge($all_updates, (array)$updates->response);
+        }
+        
+        // Add master-injected updates
+        if (!empty($master_injected_updates)) {
+            foreach ($master_injected_updates as $slug => $injected) {
+                // Convert injected update to expected format
+                $update_obj = new stdClass();
+                $update_obj->package = $injected['package'] ?? '';
+                $update_obj->new_version = $injected['new_version'] ?? '';
+                $update_obj->slug = $injected['slug'] ?? '';
+                $all_updates[$slug] = $update_obj;
+                $this->log("Added master-injected theme update for $slug: " . $injected['new_version']);
+            }
+        }
+        
+        if (empty($all_updates)) return;
 
         $private_slugs = $this->get_private_slugs('themes');
         $themes_to_update = [];
 
-        foreach ($updates->response as $slug => $data) {
+        foreach ($all_updates as $slug => $data) {
             $is_private = in_array($slug, $private_slugs);
             
             if ($source === 'wp' && !$is_private) {
@@ -903,6 +1105,7 @@ class WP_Agent_Updater_Core {
         }
 
         if (!empty($themes_to_update)) {
+            $this->log("Updating themes ($source): " . implode(', ', $themes_to_update));
             $upgrader->bulk_upgrade($themes_to_update);
         }
     }
@@ -939,38 +1142,80 @@ class WP_Agent_Updater_Core {
         $this->log('Fetching available translation updates...');
         $updates = wp_get_translation_updates();
         
+        $this->log('Translation updates check result: ' . (empty($updates) ? 'NONE' : count($updates) . ' found'));
+        
         if (empty($updates)) {
-            $this->log('No translation updates available.');
+            // Debug: Check if there are any language packs available at all
+            $this->log('Debug: Checking site language and available translations...');
+            $site_locale = get_locale();
+            $this->log('Site locale: ' . $site_locale);
+            
+            // Check if WordPress core has translation updates
+            $core_updates = get_core_updates();
+            if (!empty($core_updates)) {
+                foreach ($core_updates as $core_update) {
+                    if (isset($core_update->locale) && $core_update->locale === $site_locale) {
+                        $this->log('Core translation available: ' . $core_update->version);
+                    }
+                }
+            }
+            
+            // Check plugins for translation updates
+            $plugin_updates = get_site_transient('update_plugins');
+            if (!empty($plugin_updates->translations)) {
+                $this->log('Plugin translations available: ' . count($plugin_updates->translations));
+                foreach ($plugin_updates->translations as $trans) {
+                    $this->log('Plugin translation: ' . $trans->slug . ' -> ' . $trans->language);
+                }
+            }
+            
+            // Check themes for translation updates  
+            $theme_updates = get_site_transient('update_themes');
+            if (!empty($theme_updates->translations)) {
+                $this->log('Theme translations available: ' . count($theme_updates->translations));
+                foreach ($theme_updates->translations as $trans) {
+                    $this->log('Theme translation: ' . $trans->slug . ' -> ' . $trans->language);
+                }
+            }
+            
+            $this->log('No translation updates available after detailed check.');
             return;
         }
 
         $this->log(count($updates) . ' translation updates found.');
         foreach ($updates as $update) {
-            $this->log('Queued for update: ' . $update->slug . ' (' . $update->type . ')');
+            $this->log('Queued for update: ' . $update->slug . ' (' . $update->type . ') - Package: ' . ($update->package ?: 'MISSING'));
         }
 
-        // 3. Perform the upgrade
-        $this->log('Starting translation bulk upgrade...');
-        $upgrader = new Language_Pack_Upgrader(new Automatic_Upgrader_Skin());
-        $result = $upgrader->bulk_upgrade($updates);
-
-        // 4. Log the result
-        if (is_wp_error($result)) {
-            $this->log('Translation update failed: ' . $result->get_error_message());
-        } elseif (is_array($result)) {
-            if (empty($result)) {
-                $this->log('Translation upgrade returned empty, but no WP_Error. This might indicate that updates were attempted but failed silently.');
-            } else {
-                $this->log('Translation update completed. Result count: ' . count($result));
-                foreach($result as $i => $res) {
-                    if (is_wp_error($res)) {
-                        $this->log("Error updating item $i: " . $res->get_error_message());
-                    }
-                }
+        $this->log('Starting translation manual install (zip -> languages)...');
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        $installed = 0;
+        foreach ($updates as $update) {
+            $pkg = isset($update->package) ? $update->package : '';
+            if (!$pkg) {
+                $this->log('Skipping translation update for ' . $update->slug . ': no package URL');
+                continue;
             }
-        } else {
-            $this->log('Translation update finished with an unexpected result type.');
+            $this->log('Downloading translation package: ' . $pkg);
+            $tmp = download_url($pkg, 300);
+            if (is_wp_error($tmp)) {
+                $this->log('Translation download failed: ' . $tmp->get_error_message());
+                continue;
+            }
+            if (!is_dir(WP_LANG_DIR)) {
+                wp_mkdir_p(WP_LANG_DIR);
+            }
+            $unz = unzip_file($tmp, WP_LANG_DIR);
+            @unlink($tmp);
+            if (is_wp_error($unz)) {
+                $this->log('Translation unzip failed: ' . $unz->get_error_message());
+                continue;
+            }
+            $installed++;
+            $this->log('Successfully installed translation for: ' . $update->slug);
         }
+        $this->log('Translation install completed. Installed count: ' . $installed);
+        set_transient('wp_agent_updater_last_updated_translations', ['count' => $installed], 600);
     }
 
     private function clear_cache($full_sync = true) {
@@ -988,6 +1233,116 @@ class WP_Agent_Updater_Core {
 
             wp_update_plugins();
             wp_update_themes();
+        }
+    }
+
+    private function manual_upgrade_plugin($file, $package_url) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        $this->log("Manual plugin upgrade start: $file | Package: $package_url");
+        $tmp = download_url($package_url, 300);
+        if (is_wp_error($tmp)) {
+            $this->log("Manual upgrade download failed for $file: " . $tmp->get_error_message());
+            return $tmp;
+        }
+        $dest = WP_CONTENT_DIR . '/upgrade/wp-agent-manual-' . time();
+        if (!file_exists($dest)) {
+            wp_mkdir_p($dest);
+        }
+        $unz = unzip_file($tmp, $dest);
+        @unlink($tmp);
+        if (is_wp_error($unz)) {
+            $this->log("Manual upgrade unzip failed for $file: " . $unz->get_error_message());
+            return $unz;
+        }
+        $items = scandir($dest);
+        $extracted = '';
+        foreach ($items as $it) {
+            if ($it !== '.' && $it !== '..') { $extracted = $dest . '/' . $it; break; }
+        }
+        if (!$extracted || !is_dir($extracted)) {
+            $this->log("Manual upgrade could not locate extracted folder for $file. Dest contents: " . implode(', ', $items));
+            return new WP_Error('manual_extract', 'Extracted folder not found');
+        }
+        $slug = dirname($file);
+        if ($slug === '.') $slug = basename($file, '.php');
+        $target = WP_PLUGIN_DIR . '/' . $slug . '/';
+        $this->log("Plugin upgrade details: file=$file, slug=$slug, target=$target, extracted=$extracted");
+        $backup = '';
+        if (is_dir($target)) {
+            $backup = WP_CONTENT_DIR . '/upgrade/wp-agent-backup-' . $slug . '-' . time();
+            if (!@rename($target, $backup)) {
+                $this->log("Manual upgrade could not backup existing folder for $file to $backup");
+                $this->php_rrmdir($target);
+                $backup = '';
+            } else {
+                $this->log("Successfully backed up existing plugin to $backup");
+            }
+        }
+        $ok = @rename($extracted, $target);
+        if (!$ok) {
+            $this->log("Rename failed, attempting copy operation from $extracted to $target");
+            $this->php_rcopy($extracted, $target);
+            $this->php_rrmdir($extracted);
+            $expected_file = $target . '/' . basename($file);
+            $ok = is_dir($target) && file_exists($expected_file);
+            $this->log("Copy operation result: target_dir_exists=" . (is_dir($target) ? 'YES' : 'NO') . ", expected_file_exists=" . (file_exists($expected_file) ? 'YES' : 'NO') . " ($expected_file)");
+        }
+        if (!$ok) {
+            if (is_dir($target)) {
+                $this->log("Cleaning up failed installation at $target");
+                $this->php_rrmdir($target);
+            }
+            if ($backup && is_dir($backup)) {
+                $this->log("Restoring backup from $backup to $target");
+                @rename($backup, $target);
+            }
+            $this->log("Manual plugin upgrade failed for $file");
+            return new WP_Error('manual_install', 'Manual plugin install failed');
+        }
+        if ($backup && is_dir($backup)) {
+            $this->php_rrmdir($backup);
+        }
+        $this->log("Manual plugin upgrade completed successfully: $file");
+        return true;
+    }
+
+    private function php_rrmdir($dir) {
+        if (!is_dir($dir)) return;
+        $items = scandir($dir);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $path = $dir . '/' . $item;
+            if (is_dir($path)) {
+                $this->php_rrmdir($path);
+            } else {
+                @unlink($path);
+            }
+        }
+        @rmdir($dir);
+    }
+
+    private function php_rcopy($src, $dst) {
+        if (is_file($src)) {
+            if (!is_dir(dirname($dst))) {
+                wp_mkdir_p(dirname($dst));
+            }
+            @copy($src, $dst);
+            return;
+        }
+        if (!is_dir($dst)) {
+            wp_mkdir_p($dst);
+        }
+        $items = scandir($src);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $from = $src . '/' . $item;
+            $to = $dst . '/' . $item;
+            if (is_dir($from)) {
+                $this->php_rcopy($from, $to);
+            } else {
+                @copy($from, $to);
+            }
         }
     }
 }

@@ -295,8 +295,6 @@ class WP_Agent_Updater_Backups {
                         }
                     }
                 }
-            } catch (Throwable $e) {
-                 $this->log("CRITICAL EXCEPTION during plugin activation: " . $e->getMessage());
             } catch (Exception $e) {
                  $this->log("EXCEPTION during plugin activation: " . $e->getMessage());
             }

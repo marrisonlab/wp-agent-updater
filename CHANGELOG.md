@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-02-14
+### Changed
+- Aggiunto conteggio traduzioni installate nel risultato di update.
+- Sync invia `can_update` per distinguere update bloccati (senza package).
+- Report dettagliato: `skipped_no_package` e `failed` per plugin.
+### Fixed
+- Rimossi `catch Throwable` per compatibilità con PHP vecchi (evita fatal).
+- Migliorata affidabilità dell’upgrade manuale con backup/rollback e logging.
+
 ## [1.0.16] - 2026-02-14
 ### Changed
 - Report dettagliato verso il Master: numero di plugin aggiornati.

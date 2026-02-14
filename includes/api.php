@@ -122,8 +122,6 @@ class WP_Agent_Updater_API {
 
         try {
             $result = WP_Agent_Updater_Backups::get_instance()->restore_backup($filename);
-        } catch (Throwable $e) {
-            $result = new WP_Error('restore_exception', $e->getMessage());
         } catch (Exception $e) {
             $result = new WP_Error('restore_exception', $e->getMessage());
         }
@@ -192,8 +190,6 @@ class WP_Agent_Updater_API {
         
         try {
             $result = $this->core->perform_full_update_routine($clear_cache, $update_translations);
-        } catch (Throwable $e) {
-            $result = new WP_Error('update_exception', $e->getMessage());
         } catch (Exception $e) {
             $result = new WP_Error('update_exception', $e->getMessage());
         }
@@ -208,15 +204,21 @@ class WP_Agent_Updater_API {
         }
 
         $stats_plugins = get_transient('wp_agent_updater_last_updated_plugins');
+        $stats_translations = get_transient('wp_agent_updater_last_updated_translations');
+        $stats_report = get_transient('wp_agent_updater_last_update_report');
         delete_transient('wp_agent_updater_last_updated_plugins');
+        delete_transient('wp_agent_updater_last_updated_translations');
+        delete_transient('wp_agent_updater_last_update_report');
 
         return rest_ensure_response([
             'success' => true,
             'message' => 'Update routine completed',
             'sync_result' => $result,
             'updated' => [
-                'plugins' => (int)($stats_plugins['count'] ?? 0)
-            ]
+                'plugins' => (int)($stats_plugins['count'] ?? 0),
+                'translations' => (int)($stats_translations['count'] ?? 0)
+            ],
+            'report' => is_array($stats_report) ? $stats_report : null
         ]);
     }
 }
