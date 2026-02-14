@@ -207,10 +207,16 @@ class WP_Agent_Updater_API {
             ]);
         }
 
+        $stats_plugins = get_transient('wp_agent_updater_last_updated_plugins');
+        delete_transient('wp_agent_updater_last_updated_plugins');
+
         return rest_ensure_response([
             'success' => true,
             'message' => 'Update routine completed',
-            'sync_result' => $result
+            'sync_result' => $result,
+            'updated' => [
+                'plugins' => (int)($stats_plugins['count'] ?? 0)
+            ]
         ]);
     }
 }

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-02-14
+### Changed
+- Report dettagliato verso il Master: numero di plugin aggiornati.
+- Migliorata resilienza degli aggiornamenti con fallback su upgrade singoli.
+### Fixed
+- Corretta logica di aggiornamento per evitare “successo” senza modifiche effettive.
+
 ## [1.0.15] - 2026-02-14
 ### Changed
 - Allineamento versione post-rollback; aggiornati update.json e metadata.

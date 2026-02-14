@@ -865,7 +865,20 @@ class WP_Agent_Updater_Core {
 
         if (!empty($plugins_to_update)) {
             $this->log("Updating plugins ($source): " . implode(', ', $plugins_to_update));
-            $upgrader->bulk_upgrade($plugins_to_update);
+            $result = $upgrader->bulk_upgrade($plugins_to_update);
+            $updated = 0;
+            if (is_array($result)) {
+                foreach ($result as $res) {
+                    if ($res && !is_wp_error($res)) $updated++;
+                }
+            }
+            if (!$updated) {
+                foreach ($plugins_to_update as $file) {
+                    $single = $upgrader->upgrade($file);
+                    if ($single && !is_wp_error($single)) $updated++;
+                }
+            }
+            set_transient('wp_agent_updater_last_updated_plugins', ['count' => $updated], 600);
         }
     }
 
