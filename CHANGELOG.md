@@ -7,11 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-02-14
+### Changed
+- Allineamento versione post-rollback; aggiornati update.json e metadata.
+### Fixed
+- Stabilità routine di aggiornamento confermata post-rollback.
+
 ## [1.0.14] - 2026-02-14
 ### Fixed
-- Prevented silent update failures on some servers by forcing `FS_METHOD=direct`
-  and initializing `WP_Filesystem` in the full update routine.
-- Improved reliability of plugin/theme updates triggered via REST.
+- Evitati fallimenti silenziosi forzando `FS_METHOD=direct` e inizializzando `WP_Filesystem` nella routine di aggiornamento.
+- Maggiore affidabilità degli update via REST per plugin/temi.
 
 ## [1.0.13] - 2026-02-13
 ### Changed

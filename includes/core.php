@@ -760,30 +760,14 @@ class WP_Agent_Updater_Core {
 
     public function perform_full_update_routine($clear_cache = true, $update_translations = true) {
 
-        // Ensure filesystem operations can run non-interactively
-        if (!defined('FS_METHOD')) {
-            define('FS_METHOD', 'direct');
-        }
-        // Load filesystem utilities and initialize
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        global $wp_filesystem;
-        if (!function_exists('WP_Filesystem')) {
-            include_once ABSPATH . 'wp-admin/includes/file.php';
-        }
-        // Try to initialize the filesystem in direct mode; if it fails, continue but log
-        if (!isset($wp_filesystem) || !is_object($wp_filesystem)) {
-            $fs_init = WP_Filesystem();
-            if (!$fs_init) {
-                $this->log('WARNING: WP_Filesystem could not be initialized (FS_METHOD=direct). Proceeding with upgrader anyway.');
-            }
-        }
+
         // Ensure necessary files are loaded for upgrader
         require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/misc.php';
         require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
         require_once ABSPATH . 'wp-admin/includes/class-plugin-upgrader.php';
         require_once ABSPATH . 'wp-admin/includes/class-theme-upgrader.php';
         require_once ABSPATH . 'wp-admin/includes/class-language-pack-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
         require_once ABSPATH . 'wp-admin/includes/theme.php';
 
