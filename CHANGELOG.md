@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.18] - 2026-02-15
+### Changed
+- Migliorato `gather_site_data` per includere anche plugin con update senza package.
+- Allineati i dati inviati al Master per segnalare correttamente gli update bloccati.
+### Fixed
+- Assicurata la segnalazione degli aggiornamenti anche per plugin inattivi.
+
 ## [1.0.17] - 2026-02-14
 ### Changed
 - Aggiunto conteggio traduzioni installate nel risultato di update.

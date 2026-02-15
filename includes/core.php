@@ -249,19 +249,30 @@ class WP_Agent_Updater_Core {
 
         // Save injected updates from master
         if (isset($body['injected_updates'])) {
-            $this->log("Saving injected updates from master");
+            $this->log("Master sent injected updates");
             
             // Save injected plugin updates
             if (isset($body['injected_updates']['plugins'])) {
+                $plugin_count = count($body['injected_updates']['plugins']);
                 update_option('wp_agent_updater_master_injected_plugins', $body['injected_updates']['plugins']);
-                $this->log("Saved " . count($body['injected_updates']['plugins']) . " injected plugin updates");
+                $this->log("Saved $plugin_count injected plugin updates");
+                
+                // Log each injected plugin update
+                foreach ($body['injected_updates']['plugins'] as $file => $update) {
+                    $package = $update['package'] ?? 'MISSING';
+                    $version = $update['new_version'] ?? 'UNKNOWN';
+                    $this->log("  - $file -> v$version (Package: $package)");
+                }
             }
             
             // Save injected theme updates
             if (isset($body['injected_updates']['themes'])) {
+                $theme_count = count($body['injected_updates']['themes']);
                 update_option('wp_agent_updater_master_injected_themes', $body['injected_updates']['themes']);
-                $this->log("Saved " . count($body['injected_updates']['themes']) . " injected theme updates");
+                $this->log("Saved $theme_count injected theme updates");
             }
+        } else {
+            $this->log("No injected updates received from master");
         }
 
         return $body;
@@ -304,44 +315,49 @@ class WP_Agent_Updater_Core {
         $plugins_need_update = [];
 
         foreach ($all_plugins as $file => $plugin) {
-            if (is_plugin_active($file)) {
-                $info = [
-                    'name' => $plugin['Name'],
-                    'path' => $file,
-                    'version' => $plugin['Version']
-                ];
-                $plugins_active[] = $info;
+            $info = [
+                'name' => $plugin['Name'],
+                'path' => $file,
+                'version' => $plugin['Version']
+            ];
 
-                $update_found = false;
-                $can_update = false;
-                
-                // Check WordPress transient updates first
-                if (isset($updates->response[$file])) {
-                    $update_found = true;
-                    $can_update = true;
-                }
-                
-                // Check master-injected updates
-                if (!$update_found && isset($master_injected_updates[$file])) {
-                    $injected = $master_injected_updates[$file];
-                    $update_found = true;
-                    $can_update = !empty($injected['package']);
-                    $this->log("Using master-injected plugin update for $file: " . $info['version'] . " -> " . $injected['new_version']);
-                }
-                
-                if ($update_found) {
-                    $new_version = $injected['new_version'] ?? ($updates->response[$file]->new_version ?? '');
-                    $plugins_need_update[] = array_merge($info, [
-                        'new_version' => $new_version,
-                        'can_update' => $can_update
-                    ]);
-                }
+            if (is_plugin_active($file)) {
+                $plugins_active[] = $info;
             } else {
-                $plugins_inactive[] = [
-                    'name' => $plugin['Name'],
-                    'path' => $file,
-                    'version' => $plugin['Version']
-                ];
+                $plugins_inactive[] = $info;
+            }
+
+            $update_found = false;
+            $can_update = false;
+            $injected = null;
+
+            // Check WordPress transient updates first
+            if (isset($updates->response[$file])) {
+                $update_found = true;
+                $pkg = isset($updates->response[$file]->package) ? $updates->response[$file]->package : '';
+                $can_update = !empty($pkg);
+            }
+
+            // Check master-injected updates
+            if (!$update_found && isset($master_injected_updates[$file])) {
+                $injected = $master_injected_updates[$file];
+                $update_found = true;
+                $can_update = !empty($injected['package']);
+                $this->log("Using master-injected plugin update for $file: " . $info['version'] . " -> " . ($injected['new_version'] ?? ''));
+            }
+
+            if ($update_found) {
+                $new_version = '';
+                if ($injected) {
+                    $new_version = $injected['new_version'] ?? '';
+                } elseif (isset($updates->response[$file])) {
+                    $new_version = $updates->response[$file]->new_version ?? '';
+                }
+
+                $plugins_need_update[] = array_merge($info, [
+                    'new_version' => $new_version,
+                    'can_update' => $can_update
+                ]);
             }
         }
 
@@ -980,15 +996,24 @@ class WP_Agent_Updater_Core {
         
         // Add master-injected updates
         if (!empty($master_injected_updates)) {
+            $this->log("Processing " . count($master_injected_updates) . " master-injected plugin updates");
             foreach ($master_injected_updates as $file => $injected) {
                 // Convert injected update to expected format
                 $update_obj = new stdClass();
                 $update_obj->package = $injected['package'] ?? '';
                 $update_obj->new_version = $injected['new_version'] ?? '';
                 $update_obj->slug = $injected['slug'] ?? '';
+                
+                if (empty($update_obj->package)) {
+                    $this->log("WARNING: Master-injected update for $file has NO PACKAGE URL - skipping");
+                    continue;
+                }
+                
                 $all_updates[$file] = $update_obj;
-                $this->log("Added master-injected update for $file: " . $injected['new_version']);
+                $this->log("Added master-injected update for $file: v{$injected['new_version']} (Package: {$update_obj->package})");
             }
+        } else {
+            $this->log("No master-injected plugin updates found");
         }
         
         if (empty($all_updates)) return;
@@ -1255,19 +1280,16 @@ class WP_Agent_Updater_Core {
             $this->log("Manual upgrade unzip failed for $file: " . $unz->get_error_message());
             return $unz;
         }
-        $items = scandir($dest);
-        $extracted = '';
-        foreach ($items as $it) {
-            if ($it !== '.' && $it !== '..') { $extracted = $dest . '/' . $it; break; }
-        }
-        if (!$extracted || !is_dir($extracted)) {
-            $this->log("Manual upgrade could not locate extracted folder for $file. Dest contents: " . implode(', ', $items));
-            return new WP_Error('manual_extract', 'Extracted folder not found');
-        }
         $slug = dirname($file);
         if ($slug === '.') $slug = basename($file, '.php');
         $target = WP_PLUGIN_DIR . '/' . $slug . '/';
-        $this->log("Plugin upgrade details: file=$file, slug=$slug, target=$target, extracted=$extracted");
+        $source_dir = $this->find_plugin_source_dir($dest, $file);
+        if (!$source_dir || !is_dir($source_dir)) {
+            $items = scandir($dest);
+            $this->log("Manual upgrade could not locate plugin source dir for $file. Dest contents: " . implode(', ', $items));
+            return new WP_Error('manual_extract', 'Plugin source folder not found');
+        }
+        $this->log("Plugin upgrade details: file=$file, slug=$slug, target=$target, source_dir=$source_dir");
         $backup = '';
         if (is_dir($target)) {
             $backup = WP_CONTENT_DIR . '/upgrade/wp-agent-backup-' . $slug . '-' . time();
@@ -1279,11 +1301,11 @@ class WP_Agent_Updater_Core {
                 $this->log("Successfully backed up existing plugin to $backup");
             }
         }
-        $ok = @rename($extracted, $target);
+        $ok = @rename($source_dir, $target);
         if (!$ok) {
-            $this->log("Rename failed, attempting copy operation from $extracted to $target");
-            $this->php_rcopy($extracted, $target);
-            $this->php_rrmdir($extracted);
+            $this->log("Rename failed, attempting copy operation from $source_dir to $target");
+            $this->php_rcopy($source_dir, $target);
+            $this->php_rrmdir($source_dir);
             $expected_file = $target . '/' . basename($file);
             $ok = is_dir($target) && file_exists($expected_file);
             $this->log("Copy operation result: target_dir_exists=" . (is_dir($target) ? 'YES' : 'NO') . ", expected_file_exists=" . (file_exists($expected_file) ? 'YES' : 'NO') . " ($expected_file)");
@@ -1305,6 +1327,63 @@ class WP_Agent_Updater_Core {
         }
         $this->log("Manual plugin upgrade completed successfully: $file");
         return true;
+    }
+
+    private function find_plugin_source_dir($root, $file) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        $slug = dirname($file);
+        if ($slug === '.') $slug = basename($file, '.php');
+        $expected_basename = basename($file);
+        $installed_path = WP_PLUGIN_DIR . '/' . $file;
+        $installed_name = '';
+        if (file_exists($installed_path)) {
+            $data = get_plugin_data($installed_path, false, false);
+            if (!empty($data['Name'])) {
+                $installed_name = trim($data['Name']);
+            }
+        }
+        $best_match = '';
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::SELF_FIRST
+            );
+            foreach ($iterator as $path => $info) {
+                if (!$info->isFile()) {
+                    continue;
+                }
+                if (substr($path, -4) !== '.php') {
+                    continue;
+                }
+                $data = get_plugin_data($path, false, false);
+                $name = isset($data['Name']) ? trim($data['Name']) : '';
+                if ($installed_name && $name === $installed_name) {
+                    return dirname($path);
+                }
+                if (!$best_match && $name !== '') {
+                    $best_match = dirname($path);
+                }
+                if (basename($path) === $expected_basename) {
+                    $best_match = dirname($path);
+                }
+            }
+        } catch (Exception $e) {
+            $this->log("find_plugin_source_dir iterator exception: " . $e->getMessage());
+        }
+        if ($best_match) {
+            return $best_match;
+        }
+        $items = scandir($root);
+        foreach ($items as $it) {
+            if ($it === '.' || $it === '..') {
+                continue;
+            }
+            $path = $root . '/' . $it;
+            if (is_dir($path)) {
+                return $path;
+            }
+        }
+        return '';
     }
 
     private function php_rrmdir($dir) {
@@ -1345,4 +1424,45 @@ class WP_Agent_Updater_Core {
             }
         }
     }
+
+    public static function run_update_job_callback($job_id) {
+        $jobs = get_option('wp_agent_updater_jobs', []);
+        if (empty($jobs[$job_id])) {
+            return;
+        }
+        $job = $jobs[$job_id];
+        $jobs[$job_id]['status'] = 'running';
+        update_option('wp_agent_updater_jobs', $jobs);
+        @set_time_limit(600);
+        @ini_set('memory_limit', '512M');
+        $clear_cache = !empty($job['clear_cache']);
+        $update_translations = !empty($job['update_translations']);
+        $core = new self();
+        $result = $core->perform_full_update_routine($clear_cache, $update_translations);
+        $stats_plugins = get_transient('wp_agent_updater_last_updated_plugins');
+        $stats_translations = get_transient('wp_agent_updater_last_updated_translations');
+        $stats_report = get_transient('wp_agent_updater_last_update_report');
+        delete_transient('wp_agent_updater_last_updated_plugins');
+        delete_transient('wp_agent_updater_last_updated_translations');
+        delete_transient('wp_agent_updater_last_update_report');
+        $summary = [
+            'updated' => [
+                'plugins' => (int)($stats_plugins['count'] ?? 0),
+                'translations' => (int)($stats_translations['count'] ?? 0),
+            ],
+            'report' => is_array($stats_report) ? $stats_report : null,
+        ];
+        $jobs = get_option('wp_agent_updater_jobs', []);
+        if (is_wp_error($result)) {
+            $jobs[$job_id]['status'] = 'error';
+            $jobs[$job_id]['error'] = $result->get_error_message();
+        } else {
+            $jobs[$job_id]['status'] = 'completed';
+            $jobs[$job_id]['error'] = null;
+        }
+        $jobs[$job_id]['result'] = $summary;
+        update_option('wp_agent_updater_jobs', $jobs);
+    }
 }
+
+add_action('wp_agent_updater_run_update_job', ['WP_Agent_Updater_Core', 'run_update_job_callback'], 10, 1);

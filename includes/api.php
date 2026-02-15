@@ -16,6 +16,18 @@ class WP_Agent_Updater_API {
             'callback' => [$this, 'handle_update_request'],
             'permission_callback' => '__return_true'
         ]);
+
+        register_rest_route('wp-agent-updater/v1', '/update-async', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_update_async'],
+            'permission_callback' => '__return_true'
+        ]);
+
+        register_rest_route('wp-agent-updater/v1', '/update-status', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_update_status'],
+            'permission_callback' => '__return_true'
+        ]);
         
         register_rest_route('wp-agent-updater/v1', '/status', [
             'methods' => 'GET',
@@ -182,8 +194,6 @@ class WP_Agent_Updater_API {
         $clear_cache = $request->get_param('clear_cache');
         $update_translations = $request->get_param('update_translations');
 
-        // Trigger the update sequence
-        // Increase limits for heavy operations
         @set_time_limit(600); 
         @ini_set('memory_limit', '512M');
         $this->start_guard('Update failed');
@@ -219,6 +229,58 @@ class WP_Agent_Updater_API {
                 'translations' => (int)($stats_translations['count'] ?? 0)
             ],
             'report' => is_array($stats_report) ? $stats_report : null
+        ]);
+    }
+
+    public function handle_update_async($request) {
+        if (!$this->core->is_active()) {
+            return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
+        }
+
+        $clear_cache = (bool)$request->get_param('clear_cache');
+        $update_translations = (bool)$request->get_param('update_translations');
+
+        $jobs = get_option('wp_agent_updater_jobs', []);
+        $job_id = uniqid('update_', true);
+        $jobs[$job_id] = [
+            'status' => 'queued',
+            'created_at' => time(),
+            'clear_cache' => $clear_cache,
+            'update_translations' => $update_translations,
+            'result' => null,
+            'error' => null,
+        ];
+        update_option('wp_agent_updater_jobs', $jobs);
+
+        if (!wp_next_scheduled('wp_agent_updater_run_update_job', [$job_id])) {
+            wp_schedule_single_event(time() + 1, 'wp_agent_updater_run_update_job', [$job_id]);
+        }
+
+        return rest_ensure_response([
+            'success' => true,
+            'job_id' => $job_id,
+            'status' => 'queued',
+        ]);
+    }
+
+    public function handle_update_status($request) {
+        $job_id = sanitize_text_field($request->get_param('job_id'));
+        if (!$job_id) {
+            return new WP_Error('missing_job', 'Job ID is required', ['status' => 400]);
+        }
+        $jobs = get_option('wp_agent_updater_jobs', []);
+        if (empty($jobs[$job_id])) {
+            return rest_ensure_response([
+                'exists' => false,
+                'status' => 'unknown',
+            ]);
+        }
+        $job = $jobs[$job_id];
+        return rest_ensure_response([
+            'exists' => true,
+            'status' => $job['status'],
+            'result' => $job['result'],
+            'error' => $job['error'],
         ]);
     }
 }

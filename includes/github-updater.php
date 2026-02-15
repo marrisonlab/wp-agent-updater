@@ -26,6 +26,26 @@ class WP_Agent_Updater_GitHub_Updater {
         add_filter('plugin_action_links_' . $this->plugin_slug, [$this, 'add_force_check_button'], 10, 2);
         add_action('admin_notices', [$this, 'display_check_result']);
         add_filter('upgrader_source_selection', [$this, 'upgrader_source_selection'], 10, 4);
+        
+        // Increase timeout for downloading this plugin - use upgrader-specific filter
+        add_filter('upgrader_pre_download', [$this, 'increase_download_timeout'], 10, 3);
+    }
+    
+    public function increase_download_timeout($reply, $package, $upgrader) {
+        // Check if this is our plugin being downloaded
+        if (strpos($package, 'github.com') !== false || strpos($package, 'api.github.com') !== false) {
+            error_log('[GitHub Updater] Setting timeout to 60s for package download: ' . $package);
+            
+            // Modify the upgrader's skin to use longer timeout
+            add_filter('http_request_args', function($args, $url) use ($package) {
+                if ($url === $package) {
+                    error_log('[GitHub Updater] Applying 60s timeout to: ' . $url);
+                    $args['timeout'] = 60;
+                }
+                return $args;
+            }, 10, 2);
+        }
+        return $reply;
     }
     
     public function display_check_result() {
@@ -51,11 +71,13 @@ class WP_Agent_Updater_GitHub_Updater {
         $remote_info = $this->get_remote_info();
         
         if ($remote_info) {
-            $current_version = isset($transient->checked[$this->plugin_file]) ? $transient->checked[$this->plugin_file] : '';
+            $current_version = isset($transient->checked[$this->plugin_slug]) ? $transient->checked[$this->plugin_slug] : '';
             if (empty($current_version)) {
                  $plugin_data = get_plugin_data($this->plugin_file);
                  $current_version = $plugin_data['Version'];
             }
+
+            error_log('[GitHub Updater] Current version: ' . $current_version . ' | Remote version: ' . $remote_info->version);
 
             $plugin = new stdClass();
             $plugin->slug = $this->slug;
@@ -68,10 +90,14 @@ class WP_Agent_Updater_GitHub_Updater {
             $plugin->banners_rtl = isset($remote_info->banners_rtl) ? (array)$remote_info->banners_rtl : [];
 
             if (version_compare($current_version, $remote_info->version, '<')) {
+                error_log('[GitHub Updater] ✓ Update available! Injecting into transient (Package: ' . $plugin->package . ')');
                 $transient->response[$this->plugin_slug] = $plugin;
             } else {
+                error_log('[GitHub Updater] No update needed (current >= remote)');
                 $transient->no_update[$this->plugin_slug] = $plugin;
             }
+        } else {
+            error_log('[GitHub Updater] Failed to get remote info');
         }
         
         return $transient;
@@ -111,12 +137,25 @@ class WP_Agent_Updater_GitHub_Updater {
     private function get_remote_info() {
         $cached = get_transient($this->cache_key);
         if ($cached !== false) {
+            error_log('[GitHub Updater] Using cached update info for ' . $this->slug);
             return $cached;
         }
         
-        $response = wp_remote_get($this->update_url, ['timeout' => 15, 'sslverify' => false]);
+        error_log('[GitHub Updater] Fetching update info from: ' . $this->update_url);
+        $response = wp_remote_get($this->update_url, [
+            'timeout' => 30,
+            'sslverify' => false,
+            'redirection' => 5
+        ]);
         
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        if (is_wp_error($response)) {
+            error_log('[GitHub Updater] Error fetching updates: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 200) {
+            error_log('[GitHub Updater] HTTP error ' . $code . ' when fetching updates');
             return false;
         }
         
@@ -124,9 +163,11 @@ class WP_Agent_Updater_GitHub_Updater {
         $data = json_decode($body);
         
         if (json_last_error() !== JSON_ERROR_NONE || empty($data)) {
+            error_log('[GitHub Updater] Invalid JSON or empty response');
             return false;
         }
         
+        error_log('[GitHub Updater] Found version ' . ($data->version ?? 'UNKNOWN') . ' on GitHub');
         set_transient($this->cache_key, $data, $this->cache_duration);
         
         return $data;
@@ -172,9 +213,27 @@ class WP_Agent_Updater_GitHub_Updater {
         if (isset($hook_extra['plugin']) && $hook_extra['plugin'] === $this->plugin_slug) {
             $corrected_source = trailingslashit($remote_source) . $this->slug . '/';
             
+            error_log('[GitHub Updater] Upgrader source selection - Original: ' . $source . ' | Corrected: ' . $corrected_source);
+            
             if ($source !== $corrected_source) {
-                $wp_filesystem->move($source, $corrected_source);
-                return $corrected_source;
+                error_log('[GitHub Updater] Renaming folder from ' . basename($source) . ' to ' . $this->slug);
+                
+                // Check if corrected source already exists and remove it
+                if ($wp_filesystem->exists($corrected_source)) {
+                    error_log('[GitHub Updater] Target folder exists, removing it first');
+                    $wp_filesystem->delete($corrected_source, true);
+                }
+                
+                if ($wp_filesystem->move($source, $corrected_source)) {
+                    error_log('[GitHub Updater] ✓ Folder renamed successfully');
+                    return $corrected_source;
+                } else {
+                    error_log('[GitHub Updater] ERROR: Failed to rename folder');
+                    error_log('[GitHub Updater] Source exists: ' . ($wp_filesystem->exists($source) ? 'YES' : 'NO'));
+                    error_log('[GitHub Updater] Target exists: ' . ($wp_filesystem->exists($corrected_source) ? 'YES' : 'NO'));
+                }
+            } else {
+                error_log('[GitHub Updater] No rename needed');
             }
         }
         return $source;
