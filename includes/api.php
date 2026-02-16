@@ -144,7 +144,13 @@ class WP_Agent_Updater_API {
     }
 
     public function handle_status_request($request) {
-        $data = $this->core->gather_site_data();
+        $cached = get_option('wp_agent_updater_cached_status');
+        if (is_array($cached) && isset($cached['data'])) {
+            $data = $cached['data'];
+            $data['cached_at'] = $cached['timestamp'] ?? null;
+        } else {
+            $data = $this->core->gather_site_data();
+        }
         $data['service_active'] = $this->core->is_active();
         return rest_ensure_response($data);
     }

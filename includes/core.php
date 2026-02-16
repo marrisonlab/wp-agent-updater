@@ -172,6 +172,27 @@ class WP_Agent_Updater_Core {
         return $body;
     }
 
+    public function run_scheduled_scan() {
+        if (!function_exists('wp_clean_update_cache')) {
+            require_once ABSPATH . 'wp-admin/includes/update.php';
+        }
+        wp_clean_update_cache();
+        if (function_exists('wp_update_plugins')) {
+            wp_update_plugins();
+        }
+        if (function_exists('wp_update_themes')) {
+            wp_update_themes();
+        }
+        $data = $this->gather_site_data();
+        $cached = [
+            'timestamp' => current_time('mysql'),
+            'data' => $data
+        ];
+        update_option('wp_agent_updater_cached_status', $cached);
+        update_option('wp_agent_updater_last_scan', time());
+        return $cached;
+    }
+
     public function gather_site_data() {
         if (!function_exists('get_plugins')) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';

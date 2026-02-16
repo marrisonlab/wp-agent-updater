@@ -11,6 +11,7 @@ class WP_Agent_Updater_Admin {
         add_action('admin_init', [$this, 'register_settings']);
         add_action('wp_ajax_wp_agent_updater_toggle_agent', [$this, 'toggle_agent_callback']);
         add_action('wp_ajax_wp_agent_updater_force_sync', [$this, 'handle_force_sync']);
+        add_action('wp_ajax_wp_agent_updater_update_scan_frequency', [$this, 'update_scan_frequency']);
         
         $plugin_basename = plugin_basename(WP_AGENT_UPDATER_PATH . 'wp-agent-updater.php');
         add_filter('plugin_action_links_' . $plugin_basename, [$this, 'add_action_links']);
@@ -121,6 +122,24 @@ class WP_Agent_Updater_Admin {
         } else {
             wp_send_json_success('Sync completed successfully');
         }
+    }
+    
+    public function update_scan_frequency() {
+        check_ajax_referer('wp_agent_updater_toggle', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        $freq = isset($_POST['frequency']) ? sanitize_text_field($_POST['frequency']) : 'hourly';
+        $allowed = ['15min','30min','hourly','twicedaily','daily'];
+        if (!in_array($freq, $allowed, true)) {
+            wp_send_json_error('Invalid frequency');
+        }
+        update_option('wp_agent_updater_scan_frequency', $freq);
+        wp_clear_scheduled_hook('wp_agent_updater_scheduled_scan');
+        if (!wp_next_scheduled('wp_agent_updater_scheduled_scan')) {
+            wp_schedule_event(time(), $freq, 'wp_agent_updater_scheduled_scan');
+        }
+        wp_send_json_success(['frequency' => $freq]);
     }
 
     public function add_menu() {
@@ -256,6 +275,7 @@ class WP_Agent_Updater_Admin {
         register_setting('wp_agent_updater_options', 'wp_agent_updater_master_url', [
             'sanitize_callback' => [$this, 'sanitize_master_url']
         ]);
+        register_setting('wp_agent_updater_options', 'wp_agent_updater_scan_frequency');
     }
 
     public function sanitize_master_url($value) {
@@ -506,6 +526,25 @@ class WP_Agent_Updater_Admin {
                             <input type="hidden" name="force_sync" value="1">
                             <?php submit_button('Force Sync', 'secondary'); ?>
                         </form>
+                        
+                        <hr style="margin:16px 0;border:none;border-top:1px solid #f0f0f1;">
+                        <h2 style="border:none;margin-top:0;">
+                            <span>Scheduled Scan</span>
+                        </h2>
+                        <p class="wp-agent-updater-card-subtitle">
+                            Configure how often the agent refreshes cached status.
+                        </p>
+                        <?php $freq = get_option('wp_agent_updater_scan_frequency', 'hourly'); ?>
+                        <div class="wp-agent-updater-inline-field">
+                            <select id="wp-agent-updater-scan-frequency">
+                                <option value="15min" <?php selected($freq, '15min'); ?>>Every 15 Minutes</option>
+                                <option value="30min" <?php selected($freq, '30min'); ?>>Every 30 Minutes</option>
+                                <option value="hourly" <?php selected($freq, 'hourly'); ?>>Hourly</option>
+                                <option value="twicedaily" <?php selected($freq, 'twicedaily'); ?>>Twice Daily</option>
+                                <option value="daily" <?php selected($freq, 'daily'); ?>>Daily</option>
+                            </select>
+                            <span id="scan-frequency-spinner" class="spinner" style="float:none;"></span>
+                        </div>
                     </div>
 
                     <!-- Colonna 3: Plugin Updates -->
@@ -585,6 +624,23 @@ class WP_Agent_Updater_Admin {
 
             // Init Switch
             handleSwitch('#agent_active_switch', 'wp_agent_updater_active', '#save-spinner', '#service-status-text');
+            
+            $('#wp-agent-updater-scan-frequency').on('change', function() {
+                var val = $(this).val();
+                var $spinner = $('#scan-frequency-spinner');
+                $spinner.addClass('is-active');
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'wp_agent_updater_update_scan_frequency',
+                        frequency: val,
+                        nonce: '<?php echo wp_create_nonce("wp_agent_updater_toggle"); ?>'
+                    }
+                }).always(function() {
+                    $spinner.removeClass('is-active');
+                });
+            });
         });
         </script>
         <?php
