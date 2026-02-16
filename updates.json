@@ -1,6 +1,6 @@
 {
     "slug": "wp-agent-updater",
-    "version": "1.1.0",
+    "version": "1.1.0.1",
     "name": "WP Agent Updater",
     "download_url": "https://github.com/marrisonlab/wp-agent-updater/archive/refs/heads/master.zip",
     "sections": {
