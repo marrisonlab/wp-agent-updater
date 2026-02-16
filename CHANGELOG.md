@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.1] - 2026-02-16
+
+### Changed
+- Agent Service switch now automatically enables/disables scheduled scan and master polling.
+- Default scheduled scan set to twice daily and polling to every 2 minutes when enabling the service.
+- Scheduling options UI compacted into a collapsible box.
+
 ## [1.1.2] - 2026-02-16
 
 ### Added

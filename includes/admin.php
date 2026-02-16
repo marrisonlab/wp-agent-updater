@@ -106,6 +106,42 @@ class WP_Agent_Updater_Admin {
         
         update_option($option, $active);
         
+        // Auto-manage scheduling based on Agent Service switch
+        if ($active === 'yes') {
+            // Scheduled scan: default to twicedaily if invalid/missing
+            $freq = get_option('wp_agent_updater_scan_frequency', 'twicedaily');
+            $allowed_scan = ['15min','30min','hourly','twicedaily','daily'];
+            if (!in_array($freq, $allowed_scan, true)) {
+                $freq = 'twicedaily';
+                update_option('wp_agent_updater_scan_frequency', $freq);
+            }
+            wp_clear_scheduled_hook('wp_agent_updater_scheduled_scan');
+            if (!wp_next_scheduled('wp_agent_updater_scheduled_scan')) {
+                wp_schedule_event(time(), $freq, 'wp_agent_updater_scheduled_scan');
+            }
+            
+            // Master polling: if disabled, set to 2min; otherwise keep user's setting
+            $poll = get_option('wp_agent_updater_poll_interval', 'disabled');
+            $allowed_poll = ['disabled','2min','5min','10min','30min'];
+            if (!in_array($poll, $allowed_poll, true)) {
+                $poll = 'disabled';
+            }
+            if ($poll === 'disabled') {
+                $poll = '2min';
+                update_option('wp_agent_updater_poll_interval', $poll);
+            }
+            wp_clear_scheduled_hook('wp_agent_updater_poll_master');
+            if ($poll !== 'disabled' && !wp_next_scheduled('wp_agent_updater_poll_master')) {
+                wp_schedule_event(time(), $poll, 'wp_agent_updater_poll_master');
+            }
+        } else {
+            // Disable both schedules when Agent Service is off
+            wp_clear_scheduled_hook('wp_agent_updater_scheduled_scan');
+            wp_clear_scheduled_hook('wp_agent_updater_poll_master');
+            // Reflect disabled polling in option (scan frequency kept for next enable)
+            update_option('wp_agent_updater_poll_interval', 'disabled');
+        }
+        
         wp_send_json_success(['active' => $active === 'yes', 'option' => $option]);
     }
 
@@ -557,41 +593,46 @@ class WP_Agent_Updater_Admin {
                         </form>
                         
                         <hr style="margin:16px 0;border:none;border-top:1px solid #f0f0f1;">
-                        <h2 style="border:none;margin-top:0;">
-                            <span>Scheduled Scan</span>
-                        </h2>
-                        <p class="wp-agent-updater-card-subtitle">
-                            Configure how often the agent refreshes cached status.
-                        </p>
-                        <?php $freq = get_option('wp_agent_updater_scan_frequency', 'hourly'); ?>
-                        <div class="wp-agent-updater-inline-field">
-                            <select id="wp-agent-updater-scan-frequency">
-                                <option value="15min" <?php selected($freq, '15min'); ?>>Every 15 Minutes</option>
-                                <option value="30min" <?php selected($freq, '30min'); ?>>Every 30 Minutes</option>
-                                <option value="hourly" <?php selected($freq, 'hourly'); ?>>Hourly</option>
-                                <option value="twicedaily" <?php selected($freq, 'twicedaily'); ?>>Twice Daily</option>
-                                <option value="daily" <?php selected($freq, 'daily'); ?>>Daily</option>
-                            </select>
-                            <span id="scan-frequency-spinner" class="spinner" style="float:none;"></span>
-                        </div>
-                        
-                        <hr style="margin:16px 0;border:none;border-top:1px solid #f0f0f1;">
-                        <h2 style="border:none;margin-top:0;">
-                            <span>Master Polling</span>
-                        </h2>
-                        <p class="wp-agent-updater-card-subtitle">
-                            Control how often the Agent checks for push/update requests from the Master.
-                        </p>
-                        <?php $poll = get_option('wp_agent_updater_poll_interval', 'disabled'); ?>
-                        <div class="wp-agent-updater-inline-field">
-                            <select id="wp-agent-updater-poll-interval">
-                                <option value="disabled" <?php selected($poll, 'disabled'); ?>>Disabled</option>
-                                <option value="2min" <?php selected($poll, '2min'); ?>>Every 2 Minutes</option>
-                                <option value="5min" <?php selected($poll, '5min'); ?>>Every 5 Minutes</option>
-                                <option value="10min" <?php selected($poll, '10min'); ?>>Every 10 Minutes</option>
-                                <option value="30min" <?php selected($poll, '30min'); ?>>Every 30 Minutes</option>
-                            </select>
-                            <span id="poll-interval-spinner" class="spinner" style="float:none;"></span>
+                        <div>
+                            <button type="button" class="button button-small" id="wp-agent-updater-toggle-scheduling">Show Scheduling Options</button>
+                            <div id="wp-agent-updater-scheduling" style="display:none; margin-top:10px;">
+                                <h2 style="border:none;margin-top:0;">
+                                    <span>Scheduled Scan</span>
+                                </h2>
+                                <p class="wp-agent-updater-card-subtitle">
+                                    Configure how often the agent refreshes cached status.
+                                </p>
+                                <?php $freq = get_option('wp_agent_updater_scan_frequency', 'hourly'); ?>
+                                <div class="wp-agent-updater-inline-field">
+                                    <select id="wp-agent-updater-scan-frequency">
+                                        <option value="15min" <?php selected($freq, '15min'); ?>>Every 15 Minutes</option>
+                                        <option value="30min" <?php selected($freq, '30min'); ?>>Every 30 Minutes</option>
+                                        <option value="hourly" <?php selected($freq, 'hourly'); ?>>Hourly</option>
+                                        <option value="twicedaily" <?php selected($freq, 'twicedaily'); ?>>Twice Daily</option>
+                                        <option value="daily" <?php selected($freq, 'daily'); ?>>Daily</option>
+                                    </select>
+                                    <span id="scan-frequency-spinner" class="spinner" style="float:none;"></span>
+                                </div>
+                                
+                                <hr style="margin:16px 0;border:none;border-top:1px solid #f0f0f1;">
+                                <h2 style="border:none;margin-top:0;">
+                                    <span>Master Polling</span>
+                                </h2>
+                                <p class="wp-agent-updater-card-subtitle">
+                                    Control how often the Agent checks for push/update requests from the Master.
+                                </p>
+                                <?php $poll = get_option('wp_agent_updater_poll_interval', 'disabled'); ?>
+                                <div class="wp-agent-updater-inline-field">
+                                    <select id="wp-agent-updater-poll-interval">
+                                        <option value="disabled" <?php selected($poll, 'disabled'); ?>>Disabled</option>
+                                        <option value="2min" <?php selected($poll, '2min'); ?>>Every 2 Minutes</option>
+                                        <option value="5min" <?php selected($poll, '5min'); ?>>Every 5 Minutes</option>
+                                        <option value="10min" <?php selected($poll, '10min'); ?>>Every 10 Minutes</option>
+                                        <option value="30min" <?php selected($poll, '30min'); ?>>Every 30 Minutes</option>
+                                    </select>
+                                    <span id="poll-interval-spinner" class="spinner" style="float:none;"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -647,6 +688,9 @@ class WP_Agent_Updater_Admin {
                                         }).always(function() {
                                             $spinner.removeClass('is-active');
                                         });
+                                        // Reflect defaults in UI
+                                        $('#wp-agent-updater-scan-frequency').val('twicedaily').trigger('change');
+                                        $('#wp-agent-updater-poll-interval').val('2min').trigger('change');
                                     } else {
                                         $statusText.text('INATTIVO').removeClass('status-active').addClass('status-inactive');
                                         $spinner.removeClass('is-active');
@@ -672,6 +716,14 @@ class WP_Agent_Updater_Admin {
 
             // Init Switch
             handleSwitch('#agent_active_switch', 'wp_agent_updater_active', '#save-spinner', '#service-status-text');
+            
+            // Toggle scheduling box
+            $('#wp-agent-updater-toggle-scheduling').on('click', function() {
+                var box = $('#wp-agent-updater-scheduling');
+                box.slideToggle(150);
+                var isVisible = box.is(':visible');
+                $(this).text(isVisible ? 'Hide Scheduling Options' : 'Show Scheduling Options');
+            });
             
             $('#wp-agent-updater-scan-frequency').on('change', function() {
                 var val = $(this).val();
