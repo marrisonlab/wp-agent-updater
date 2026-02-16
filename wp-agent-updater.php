@@ -3,7 +3,7 @@
  * Plugin Name: WP Agent Updater
  * Plugin URI: https://github.com/marrisonlab/wp-agent-updater
  * Description: Client agent for WP Master/Agent Updater System.
- * Version: 1.1.2.1
+ * Version: 1.1.2.2
  * Author: Angelo Marra
  * Author URI: https://marrisonlab.com
  * License: GPL v2 or later

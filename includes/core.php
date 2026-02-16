@@ -5,6 +5,8 @@ class WP_Agent_Updater_Core {
     public function init() {
         add_filter('http_request_args', [$this, 'allow_private_repo_downloads'], 10, 2);
         add_filter('upgrader_source_selection', [$this, 'fix_plugin_folder_name'], 10, 4);
+        add_filter('site_transient_update_plugins', [$this, 'inject_private_plugin_updates'], 999);
+        add_filter('site_transient_update_themes', [$this, 'inject_private_theme_updates'], 999);
     }
 
     private function log($message) {
@@ -14,10 +16,29 @@ class WP_Agent_Updater_Core {
     }
 
     public function allow_private_repo_downloads($args, $url) {
+        $allowed = false;
+
         if (stripos($url, 'github.com') !== false ||
             stripos($url, 'raw.githubusercontent.com') !== false ||
             stripos($url, 'downloads.wordpress.org') !== false ||
             stripos($url, 'api.wordpress.org') !== false) {
+            $allowed = true;
+        }
+
+        if (!$allowed) {
+            $plugins_repo = get_option('wp_agent_updater_private_plugins_repo');
+            $themes_repo = get_option('wp_agent_updater_private_themes_repo');
+            $extra = array_filter([$plugins_repo, $themes_repo]);
+
+            foreach ($extra as $repo_url) {
+                if (!empty($repo_url) && stripos($url, $repo_url) !== false) {
+                    $allowed = true;
+                    break;
+                }
+            }
+        }
+
+        if ($allowed) {
             $args['sslverify'] = false;
             $args['timeout'] = 300;
         }
@@ -177,6 +198,15 @@ class WP_Agent_Updater_Core {
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (is_array($body) && isset($body['config']) && is_array($body['config'])) {
+            $config = $body['config'];
+            if (array_key_exists('plugins_repo', $config)) {
+                update_option('wp_agent_updater_private_plugins_repo', esc_url_raw($config['plugins_repo']));
+            }
+            if (array_key_exists('themes_repo', $config)) {
+                update_option('wp_agent_updater_private_themes_repo', esc_url_raw($config['themes_repo']));
+            }
+        }
         return $body;
     }
 
@@ -202,11 +232,152 @@ class WP_Agent_Updater_Core {
         try {
             $this->sync_with_master();
         } catch (Throwable $e) {
-            // swallow to keep cron fast
         } catch (Exception $e) {
-            // swallow to keep cron fast
         }
         return $cached;
+    }
+
+    public function inject_private_plugin_updates($transient) {
+        if (!is_object($transient) || empty($transient->checked) || !is_array($transient->checked)) {
+            return $transient;
+        }
+
+        $repo_url = get_option('wp_agent_updater_private_plugins_repo');
+        if (empty($repo_url)) {
+            return $transient;
+        }
+
+        $repo_plugins = $this->fetch_private_repo_items($repo_url);
+        if (empty($repo_plugins) || !is_array($repo_plugins)) {
+            return $transient;
+        }
+
+        foreach ($repo_plugins as $slug => $plugin) {
+            $name = isset($plugin['name']) ? $plugin['name'] : '';
+            $plugin_file = $this->find_plugin_file($slug, $name);
+            if (!$plugin_file) {
+                continue;
+            }
+
+            if (!isset($transient->checked[$plugin_file])) {
+                continue;
+            }
+
+            $current_version = $transient->checked[$plugin_file];
+            $new_version = isset($plugin['version']) ? $plugin['version'] : (isset($plugin['new_version']) ? $plugin['new_version'] : null);
+
+            if (!$new_version || version_compare($current_version, $new_version, '>=')) {
+                continue;
+            }
+
+            $update = new stdClass();
+            $update->slug = $slug;
+            $update->plugin = $plugin_file;
+            $update->new_version = $new_version;
+            $update->package = isset($plugin['package']) ? $plugin['package'] : (isset($plugin['download_url']) ? $plugin['download_url'] : '');
+            $update->url = isset($plugin['url']) ? $plugin['url'] : '';
+
+            if (!isset($transient->response) || !is_array($transient->response)) {
+                $transient->response = [];
+            }
+
+            $transient->response[$plugin_file] = $update;
+            $this->log("Injected private plugin update: $slug $current_version -> $new_version");
+        }
+
+        return $transient;
+    }
+
+    public function inject_private_theme_updates($transient) {
+        if (!is_object($transient) || empty($transient->checked) || !is_array($transient->checked)) {
+            return $transient;
+        }
+
+        $repo_url = get_option('wp_agent_updater_private_themes_repo');
+        if (empty($repo_url)) {
+            return $transient;
+        }
+
+        $repo_themes = $this->fetch_private_repo_items($repo_url);
+        if (empty($repo_themes) || !is_array($repo_themes)) {
+            return $transient;
+        }
+
+        foreach ($repo_themes as $slug => $theme) {
+            if (!isset($transient->checked[$slug])) {
+                continue;
+            }
+
+            $current_version = $transient->checked[$slug];
+            $new_version = isset($theme['version']) ? $theme['version'] : (isset($theme['new_version']) ? $theme['new_version'] : null);
+
+            if (!$new_version || version_compare($current_version, $new_version, '>=')) {
+                continue;
+            }
+
+            $update = [
+                'theme' => $slug,
+                'new_version' => $new_version,
+                'package' => isset($theme['package']) ? $theme['package'] : (isset($theme['download_url']) ? $theme['download_url'] : ''),
+                'url' => isset($theme['url']) ? $theme['url'] : ''
+            ];
+
+            if (!isset($transient->response) || !is_array($transient->response)) {
+                $transient->response = [];
+            }
+
+            $transient->response[$slug] = $update;
+            $this->log("Injected private theme update: $slug $current_version -> $new_version");
+        }
+
+        return $transient;
+    }
+
+    private function fetch_private_repo_items($url) {
+        if (empty($url)) {
+            return [];
+        }
+
+        $response = wp_remote_get($url, ['timeout' => 15, 'sslverify' => false]);
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            return [];
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $json = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $url_fallback = untrailingslashit($url) . '/packages.json';
+            $response = wp_remote_get($url_fallback, ['timeout' => 15, 'sslverify' => false]);
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                $body = wp_remote_retrieve_body($response);
+                $json = json_decode($body, true);
+            }
+        }
+
+        if (!$json || !is_array($json)) {
+            return [];
+        }
+
+        if (isset($json['packages'])) {
+            $json = $json['packages'];
+        } elseif (isset($json['plugins'])) {
+            $json = $json['plugins'];
+        } elseif (isset($json['themes'])) {
+            $json = $json['themes'];
+        }
+
+        if (is_array($json) && isset($json[0]) && is_array($json[0]) && isset($json[0]['slug'])) {
+            $assoc = [];
+            foreach ($json as $item) {
+                if (!empty($item['slug'])) {
+                    $assoc[$item['slug']] = $item;
+                }
+            }
+            $json = $assoc;
+        }
+
+        return $json;
     }
 
     public function gather_site_data() {
