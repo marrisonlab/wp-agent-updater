@@ -7,39 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.18] - 2026-02-15
-### Changed
-- Migliorato `gather_site_data` per includere anche plugin con update senza package.
-- Allineati i dati inviati al Master per segnalare correttamente gli update bloccati.
-### Fixed
-- Assicurata la segnalazione degli aggiornamenti anche per plugin inattivi.
+## [1.1.0] - 2026-02-16
 
-## [1.0.17] - 2026-02-14
 ### Changed
-- Aggiunto conteggio traduzioni installate nel risultato di update.
-- Sync invia `can_update` per distinguere update bloccati (senza package).
-- Report dettagliato: `skipped_no_package` e `failed` per plugin.
-### Fixed
-- Rimossi `catch Throwable` per compatibilità con PHP vecchi (evita fatal).
-- Migliorata affidabilità dell’upgrade manuale con backup/rollback e logging.
-
-## [1.0.16] - 2026-02-14
-### Changed
-- Report dettagliato verso il Master: numero di plugin aggiornati.
-- Migliorata resilienza degli aggiornamenti con fallback su upgrade singoli.
-### Fixed
-- Corretta logica di aggiornamento per evitare “successo” senza modifiche effettive.
-
-## [1.0.15] - 2026-02-14
-### Changed
-- Allineamento versione post-rollback; aggiornati update.json e metadata.
-### Fixed
-- Stabilità routine di aggiornamento confermata post-rollback.
-
-## [1.0.14] - 2026-02-14
-### Fixed
-- Evitati fallimenti silenziosi forzando `FS_METHOD=direct` e inizializzando `WP_Filesystem` nella routine di aggiornamento.
-- Maggiore affidabilità degli update via REST per plugin/temi.
+- Simplified architecture: Agent now relies only on WordPress update transients.
+- Removed legacy private repository HTTP calls from the update core.
+- Unified plugin and theme update routines to respect WordPress-reported updates.
+- Reduced risk of timeouts by avoiding custom repo checks during sync and update.
 
 ## [1.0.13] - 2026-02-13
 ### Changed
