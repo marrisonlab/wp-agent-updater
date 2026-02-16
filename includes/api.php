@@ -48,6 +48,26 @@ class WP_Agent_Updater_API {
         ]);
     }
 
+    private function is_authorized($request) {
+        $token = get_option('wp_agent_updater_master_token');
+        if (empty($token)) {
+            return true;
+        }
+        $ts = $request->get_header('x-marrison-timestamp');
+        $sig = $request->get_header('x-marrison-signature');
+        if ($ts && $sig) {
+            $now = time();
+            if (abs($now - (int)$ts) > 600) {
+                return false;
+            }
+            $message = $request->get_method() === 'POST' ? (string)$request->get_body() : (string)$request->get_param('site_url');
+            $expected = hash_hmac('sha256', $message . '|' . $ts, $token);
+            return hash_equals($expected, $sig);
+        }
+        $provided = $request->get_header('x-marrison-token');
+        return is_string($provided) && hash_equals($token, $provided);
+    }
+
     private function start_guard($context) {
         $this->response_sent = false;
         ob_start();
@@ -89,6 +109,9 @@ class WP_Agent_Updater_API {
     }
 
     public function handle_get_backups($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         if (!$this->core->is_active()) {
             return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
         }
@@ -103,6 +126,9 @@ class WP_Agent_Updater_API {
     }
 
     public function handle_restore_backup($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         if (!$this->core->is_active()) {
             return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
         }
@@ -144,6 +170,9 @@ class WP_Agent_Updater_API {
     }
 
     public function handle_status_request($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         $cached = get_option('wp_agent_updater_cached_status');
         if (is_array($cached) && isset($cached['data'])) {
             $data = $cached['data'];
@@ -156,6 +185,9 @@ class WP_Agent_Updater_API {
     }
 
     public function handle_clear_repo_cache($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         return $this->core->handle_clear_repo_cache();
     }
 
@@ -180,6 +212,9 @@ class WP_Agent_Updater_API {
     }
 
     public function handle_update_request($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         if (!$this->core->is_active()) {
             return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
         }

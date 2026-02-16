@@ -12,6 +12,7 @@ class WP_Agent_Updater_Admin {
         add_action('wp_ajax_wp_agent_updater_toggle_agent', [$this, 'toggle_agent_callback']);
         add_action('wp_ajax_wp_agent_updater_force_sync', [$this, 'handle_force_sync']);
         add_action('wp_ajax_wp_agent_updater_update_scan_frequency', [$this, 'update_scan_frequency']);
+        add_action('wp_ajax_wp_agent_updater_update_poll_interval', [$this, 'update_poll_interval']);
         
         $plugin_basename = plugin_basename(WP_AGENT_UPDATER_PATH . 'wp-agent-updater.php');
         add_filter('plugin_action_links_' . $plugin_basename, [$this, 'add_action_links']);
@@ -276,6 +277,10 @@ class WP_Agent_Updater_Admin {
             'sanitize_callback' => [$this, 'sanitize_master_url']
         ]);
         register_setting('wp_agent_updater_options', 'wp_agent_updater_scan_frequency');
+        register_setting('wp_agent_updater_options', 'wp_agent_updater_poll_interval');
+        register_setting('wp_agent_updater_options', 'wp_agent_updater_master_token', [
+            'sanitize_callback' => [$this, 'sanitize_master_token']
+        ]);
     }
 
     public function sanitize_master_url($value) {
@@ -283,6 +288,14 @@ class WP_Agent_Updater_Admin {
             return get_option('wp_agent_updater_master_url');
         }
         return esc_url_raw($value);
+    }
+    
+    public function sanitize_master_token($value) {
+        $value = is_string($value) ? trim($value) : '';
+        if ($value === '') {
+            return get_option('wp_agent_updater_master_token');
+        }
+        return $value;
     }
 
     public function render_page() {
@@ -476,6 +489,22 @@ class WP_Agent_Updater_Admin {
                                             <?php endif; ?>
                                         </td>
                                     </tr>
+                                    <tr valign="top">
+                                        <th scope="row">Master API Token</th>
+                                        <td>
+                                            <?php 
+                                            $master_token = get_option('wp_agent_updater_master_token'); 
+                                            $placeholder_token = $master_token ? '••••••••••••••••' : 'Enter API token';
+                                            ?>
+                                            <input type="password" name="wp_agent_updater_master_token" value="" class="regular-text" placeholder="<?php echo esc_attr($placeholder_token); ?>" autocomplete="new-password" />
+                                            <p class="description">Copy the API token configured on the Master. Used to authenticate polling and sync.</p>
+                                            <?php if ($master_token): ?>
+                                                <p class="description" style="color: #46b450; margin-top: 5px;">
+                                                    <span class="dashicons dashicons-yes"></span> Token configured.
+                                                </p>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
                                 </table>
                                 <?php submit_button('Save URL Configuration'); ?>
                             </form>
@@ -544,6 +573,25 @@ class WP_Agent_Updater_Admin {
                                 <option value="daily" <?php selected($freq, 'daily'); ?>>Daily</option>
                             </select>
                             <span id="scan-frequency-spinner" class="spinner" style="float:none;"></span>
+                        </div>
+                        
+                        <hr style="margin:16px 0;border:none;border-top:1px solid #f0f0f1;">
+                        <h2 style="border:none;margin-top:0;">
+                            <span>Master Polling</span>
+                        </h2>
+                        <p class="wp-agent-updater-card-subtitle">
+                            Control how often the Agent checks for push/update requests from the Master.
+                        </p>
+                        <?php $poll = get_option('wp_agent_updater_poll_interval', 'disabled'); ?>
+                        <div class="wp-agent-updater-inline-field">
+                            <select id="wp-agent-updater-poll-interval">
+                                <option value="disabled" <?php selected($poll, 'disabled'); ?>>Disabled</option>
+                                <option value="2min" <?php selected($poll, '2min'); ?>>Every 2 Minutes</option>
+                                <option value="5min" <?php selected($poll, '5min'); ?>>Every 5 Minutes</option>
+                                <option value="10min" <?php selected($poll, '10min'); ?>>Every 10 Minutes</option>
+                                <option value="30min" <?php selected($poll, '30min'); ?>>Every 30 Minutes</option>
+                            </select>
+                            <span id="poll-interval-spinner" class="spinner" style="float:none;"></span>
                         </div>
                     </div>
 
@@ -641,8 +689,43 @@ class WP_Agent_Updater_Admin {
                     $spinner.removeClass('is-active');
                 });
             });
+            
+            $('#wp-agent-updater-poll-interval').on('change', function() {
+                var val = $(this).val();
+                var $spinner = $('#poll-interval-spinner');
+                $spinner.addClass('is-active');
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'wp_agent_updater_update_poll_interval',
+                        poll_interval: val,
+                        nonce: '<?php echo wp_create_nonce("wp_agent_updater_toggle"); ?>'
+                    }
+                }).always(function() {
+                    $spinner.removeClass('is-active');
+                });
+            });
         });
         </script>
         <?php
+    }
+
+    public function update_poll_interval() {
+        check_ajax_referer('wp_agent_updater_toggle', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+        $val = isset($_POST['poll_interval']) ? sanitize_text_field($_POST['poll_interval']) : 'disabled';
+        $allowed = ['disabled','2min','5min','10min','30min'];
+        if (!in_array($val, $allowed, true)) {
+            wp_send_json_error('Invalid interval');
+        }
+        update_option('wp_agent_updater_poll_interval', $val);
+        wp_clear_scheduled_hook('wp_agent_updater_poll_master');
+        if ($val !== 'disabled' && !wp_next_scheduled('wp_agent_updater_poll_master')) {
+            wp_schedule_event(time(), $val, 'wp_agent_updater_poll_master');
+        }
+        wp_send_json_success(['poll_interval' => $val]);
     }
 }

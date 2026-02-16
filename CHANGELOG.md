@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-02-16
+
+### Added
+- Support for API token authentication with HMAC-signed requests to the Master.
+- Master API token configuration field to secure communication.
+
+### Changed
+- Poll requests now use HTTPS verification with signed headers for site identity.
+- Status reporting and sync/update handling aligned with new Master pending and stale states.
+
 ## [1.1.0] - 2026-02-16
 
 ### Changed

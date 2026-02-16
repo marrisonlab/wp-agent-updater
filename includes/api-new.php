@@ -58,10 +58,33 @@ class WP_Agent_Updater_API {
         ]);
     }
     
+    private function is_authorized($request) {
+        $token = get_option('wp_agent_updater_master_token');
+        if (empty($token)) {
+            return true;
+        }
+        $ts = $request->get_header('x-marrison-timestamp');
+        $sig = $request->get_header('x-marrison-signature');
+        if ($ts && $sig) {
+            $now = time();
+            if (abs($now - (int)$ts) > 600) {
+                return false;
+            }
+            $message = $request->get_method() === 'POST' ? (string)$request->get_body() : (string)$request->get_param('site_url');
+            $expected = hash_hmac('sha256', $message . '|' . $ts, $token);
+            return hash_equals($expected, $sig);
+        }
+        $provided = $request->get_header('x-marrison-token');
+        return is_string($provided) && hash_equals($token, $provided);
+    }
+    
     /**
      * Handle status request
      */
     public function handle_status($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         try {
             $status = $this->core->get_status_data();
             $config = $this->core->get_config();
@@ -81,6 +104,9 @@ class WP_Agent_Updater_API {
      * Handle update request
      */
     public function handle_update($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         $options = $request->get_json_params() ?? [];
         
         $result = $this->core->perform_update($options);
@@ -96,6 +122,9 @@ class WP_Agent_Updater_API {
      * Handle sync request
      */
     public function handle_sync($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         $result = $this->core->sync_with_master();
         
         if (!$result['success']) {
@@ -109,6 +138,9 @@ class WP_Agent_Updater_API {
      * Handle config request
      */
     public function handle_config($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         $method = $request->get_method();
         
         if ($method === 'GET') {
@@ -172,6 +204,9 @@ class WP_Agent_Updater_API {
      * Handle status change (activate/deactivate)
      */
     public function handle_status_change($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
         $action = $request->get_param('action');
         
         if ($action === 'activate') {

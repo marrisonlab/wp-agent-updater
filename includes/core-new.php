@@ -583,11 +583,19 @@ class WP_Agent_Updater_Core {
         
         $data = $this->get_status_data();
         
+        $headers = ['Content-Type' => 'application/json'];
+        $token = get_option('wp_agent_updater_master_token');
+        $ts = time();
+        if (!empty($token)) {
+            $headers['X-Marrison-Token'] = $token;
+            $headers['X-Marrison-Timestamp'] = (string)$ts;
+            $headers['X-Marrison-Signature'] = hash_hmac('sha256', json_encode($data) . '|' . $ts, $token);
+        }
         $response = wp_remote_post($endpoint, [
             'body' => json_encode($data),
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => $headers,
             'timeout' => 30,
-            'sslverify' => false
+            'sslverify' => true
         ]);
         
         if (is_wp_error($response)) {
