@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.3] - 2026-02-16
+
+### Changed
+- Consumo richieste di restore via polling dal Master, con log dettagliati.
+- Dopo il restore, esegue run_scheduled_scan per aggiornare immediatamente il Master.
+
 ## [1.1.2.2] - 2026-02-16
 
 ### Added

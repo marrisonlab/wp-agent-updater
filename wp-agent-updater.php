@@ -3,7 +3,7 @@
  * Plugin Name: WP Agent Updater
  * Plugin URI: https://github.com/marrisonlab/wp-agent-updater
  * Description: Client agent for WP Master/Agent Updater System.
- * Version: 1.1.2.2
+ * Version: 1.1.2.3
  * Author: Angelo Marra
  * Author URI: https://marrisonlab.com
  * License: GPL v2 or later
@@ -122,7 +122,7 @@ function wp_agent_updater_poll_master_requests() {
         $headers['X-Marrison-Timestamp'] = (string)$ts;
         $headers['X-Marrison-Signature'] = hash_hmac('sha256', $site . '|' . $ts, $token);
     }
-    $resp = wp_remote_get($poll, ['timeout' => 5, 'sslverify' => true, 'headers' => $headers]);
+    $resp = wp_remote_get($poll, ['timeout' => 10, 'sslverify' => true, 'headers' => $headers]);
     if (is_wp_error($resp)) {
         return;
     }
@@ -138,6 +138,21 @@ function wp_agent_updater_poll_master_requests() {
         $clear = !isset($opts['clear_cache']) ? true : (bool)$opts['clear_cache'];
         $trans = !isset($opts['update_translations']) ? true : (bool)$opts['update_translations'];
         $agent->perform_full_update_routine($clear, $trans);
+    }
+    if (!empty($info['restore_requested']) && !empty($info['restore_data']['filename'])) {
+        error_log('[WP Agent Updater] Restore request received for ' . $info['restore_data']['filename']);
+        @set_time_limit(600);
+        @ini_set('memory_limit', '512M');
+        $backups = WP_Agent_Updater_Backups::get_instance();
+        $result = $backups->restore_backup($info['restore_data']['filename']);
+        if (is_wp_error($result)) {
+            error_log('[WP Agent Updater] Restore error: ' . $result->get_error_message());
+        } else {
+            error_log('[WP Agent Updater] Restore completed: ' . $info['restore_data']['filename']);
+        }
+        if (!is_wp_error($result)) {
+            $agent->run_scheduled_scan();
+        }
     }
 }
 add_action('wp_agent_updater_poll_master', 'wp_agent_updater_poll_master_requests');
