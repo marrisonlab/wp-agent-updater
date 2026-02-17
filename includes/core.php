@@ -15,6 +15,14 @@ class WP_Agent_Updater_Core {
         error_log("[$timestamp] $message\n", 3, $log_file);
     }
 
+    private function clean_url($url) {
+        $url = trim((string)$url);
+        if ($url === '') return '';
+        // remove surrounding quotes/backticks/spaces
+        $url = preg_replace('/^[`\s"\']+|[`\s"\']+$/u', '', $url);
+        return $url;
+    }
+
     public function allow_private_repo_downloads($args, $url) {
         $allowed = false;
 
@@ -274,7 +282,12 @@ class WP_Agent_Updater_Core {
             $update->slug = $slug;
             $update->plugin = $plugin_file;
             $update->new_version = $new_version;
-            $update->package = isset($plugin['package']) ? $plugin['package'] : (isset($plugin['download_url']) ? $plugin['download_url'] : '');
+            $pkg_raw = isset($plugin['package']) ? $plugin['package'] : (isset($plugin['download_url']) ? $plugin['download_url'] : '');
+            $pkg = $this->clean_url($pkg_raw);
+            if ((empty($pkg) || !preg_match('/^https?:\\/\\//i', $pkg)) && !empty($plugin['zip_file']) && !empty($repo_url)) {
+                $pkg = untrailingslashit($repo_url) . '/' . ltrim($plugin['zip_file'], '/');
+            }
+            $update->package = $pkg;
             $update->url = isset($plugin['url']) ? $plugin['url'] : '';
 
             if (!isset($transient->response) || !is_array($transient->response)) {
@@ -330,10 +343,16 @@ class WP_Agent_Updater_Core {
                 continue;
             }
 
+            $pkg_raw = isset($theme['package']) ? $theme['package'] : (isset($theme['download_url']) ? $theme['download_url'] : '');
+            $pkg = $this->clean_url($pkg_raw);
+            if ((empty($pkg) || !preg_match('/^https?:\\/\\//i', $pkg)) && !empty($theme['zip_file']) && !empty($repo_url)) {
+                $pkg = untrailingslashit($repo_url) . '/' . ltrim($theme['zip_file'], '/');
+            }
+
             $update = [
                 'theme' => $matched_slug,
                 'new_version' => $new_version,
-                'package' => isset($theme['package']) ? $theme['package'] : (isset($theme['download_url']) ? $theme['download_url'] : ''),
+                'package' => $pkg,
                 'url' => isset($theme['url']) ? $theme['url'] : ''
             ];
 
