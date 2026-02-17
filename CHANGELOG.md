@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.6] - 2026-02-17
+
+### Changed
+- Version bump to maintain compatibility with Master Updater 1.1.2.6
+- Updated plugin metadata and version numbering
+
 ## [1.1.2.5] - 2026-02-17
 
 ### Added
