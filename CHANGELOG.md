@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.5] - 2026-02-17
+
+### Added
+- Support for on-demand poll endpoint (`/wp-agent-updater/v1/poll-now`) to immediately consume queued actions.
+
+### Changed
+- Aligned with Master call strategy flow to handle immediate push or queued operations.
+
 ## [1.1.2.4] - 2026-02-17
 
 ### Changed

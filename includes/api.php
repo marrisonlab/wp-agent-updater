@@ -17,6 +17,12 @@ class WP_Agent_Updater_API {
             'permission_callback' => '__return_true'
         ]);
         
+        register_rest_route('wp-agent-updater/v1', '/poll-now', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_poll_now'],
+            'permission_callback' => '__return_true'
+        ]);
+        
         register_rest_route('wp-agent-updater/v1', '/status', [
             'methods' => 'GET',
             'callback' => [$this, 'handle_status_request'],
@@ -249,6 +255,72 @@ class WP_Agent_Updater_API {
             'success' => true,
             'message' => 'Update routine completed',
             'sync_result' => $result
+        ]);
+    }
+    
+    public function handle_poll_now($request) {
+        if (!$this->is_authorized($request)) {
+            return new WP_Error('unauthorized', 'Unauthorized', ['status' => 403]);
+        }
+        if (!$this->core->is_active()) {
+            return new WP_Error('disabled', 'Agent service disabled', ['status' => 403]);
+        }
+        
+        $master = $this->core->get_master_url();
+        if (empty($master)) {
+            return new WP_Error('no_master', 'Master URL not configured', ['status' => 400]);
+        }
+        
+        $site = get_site_url();
+        $poll = untrailingslashit($master) . '/wp-json/wp-master-updater/v1/poll';
+        $poll = add_query_arg('site_url', $site, $poll);
+        $headers = [];
+        $token = get_option('wp_agent_updater_master_token');
+        $ts = time();
+        if (!empty($token)) {
+            $headers['X-Marrison-Token'] = $token;
+            $headers['X-Marrison-Timestamp'] = (string)$ts;
+            $headers['X-Marrison-Signature'] = hash_hmac('sha256', $site . '|' . $ts, $token);
+        }
+        
+        $resp = wp_remote_get($poll, ['timeout' => 10, 'sslverify' => true, 'headers' => $headers]);
+        if (is_wp_error($resp)) {
+            return new WP_Error('poll_error', $resp->get_error_message(), ['status' => 500]);
+        }
+        $info = json_decode(wp_remote_retrieve_body($resp), true);
+        if (!is_array($info)) {
+            return new WP_Error('poll_invalid', 'Invalid poll response', ['status' => 500]);
+        }
+        
+        $actions_started = [];
+        
+        if (!empty($info['push_requested'])) {
+            $this->core->run_scheduled_scan();
+            $actions_started[] = 'scan';
+        }
+        
+        if (!empty($info['update_requested'])) {
+            $opts = is_array($info['update_options'] ?? null) ? $info['update_options'] : [];
+            $clear = !isset($opts['clear_cache']) ? true : (bool)$opts['clear_cache'];
+            $trans = !isset($opts['update_translations']) ? true : (bool)$opts['update_translations'];
+            $this->core->perform_full_update_routine($clear, $trans);
+            $actions_started[] = 'update';
+        }
+        
+        if (!empty($info['restore_requested']) && !empty($info['restore_data']['filename'])) {
+            @set_time_limit(600);
+            @ini_set('memory_limit', '512M');
+            $backups = WP_Agent_Updater_Backups::get_instance();
+            $result = $backups->restore_backup($info['restore_data']['filename']);
+            if (!is_wp_error($result)) {
+                $this->core->run_scheduled_scan();
+                $actions_started[] = 'restore';
+            }
+        }
+        
+        return rest_ensure_response([
+            'success' => true,
+            'actions' => $actions_started
         ]);
     }
 }
