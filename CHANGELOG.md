@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2.4] - 2026-02-17
+
+### Changed
+- Migliorato matching degli slug dei temi da repository privato con quelli installati.
+- I temi privati vengono ora iniettati anche se slug zip e slug WP differiscono.
+
 ## [1.1.2.3] - 2026-02-16
 
 ### Changed

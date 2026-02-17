@@ -304,11 +304,26 @@ class WP_Agent_Updater_Core {
         }
 
         foreach ($repo_themes as $slug => $theme) {
-            if (!isset($transient->checked[$slug])) {
+            $matched_slug = null;
+
+            if (isset($transient->checked[$slug])) {
+                $matched_slug = $slug;
+            } else {
+                $target = function_exists('sanitize_title') ? sanitize_title($slug) : strtolower($slug);
+                foreach ($transient->checked as $theme_slug => $version) {
+                    $normalized = function_exists('sanitize_title') ? sanitize_title($theme_slug) : strtolower($theme_slug);
+                    if ($normalized === $target) {
+                        $matched_slug = $theme_slug;
+                        break;
+                    }
+                }
+            }
+
+            if ($matched_slug === null) {
                 continue;
             }
 
-            $current_version = $transient->checked[$slug];
+            $current_version = $transient->checked[$matched_slug];
             $new_version = isset($theme['version']) ? $theme['version'] : (isset($theme['new_version']) ? $theme['new_version'] : null);
 
             if (!$new_version || version_compare($current_version, $new_version, '>=')) {
@@ -316,7 +331,7 @@ class WP_Agent_Updater_Core {
             }
 
             $update = [
-                'theme' => $slug,
+                'theme' => $matched_slug,
                 'new_version' => $new_version,
                 'package' => isset($theme['package']) ? $theme['package'] : (isset($theme['download_url']) ? $theme['download_url'] : ''),
                 'url' => isset($theme['url']) ? $theme['url'] : ''
@@ -326,8 +341,8 @@ class WP_Agent_Updater_Core {
                 $transient->response = [];
             }
 
-            $transient->response[$slug] = $update;
-            $this->log("Injected private theme update: $slug $current_version -> $new_version");
+            $transient->response[$matched_slug] = $update;
+            $this->log("Injected private theme update: $slug ($matched_slug) $current_version -> $new_version");
         }
 
         return $transient;
